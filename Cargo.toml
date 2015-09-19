@@ -1,0 +1,13 @@
+[package]
+name = "Portal"
+version = "0.1.0"
+authors = ["trolleyman <cgtrolley@gmail.com>"]
+
+[dependencies.cgmath]
+git = "https://github.com/bjz/cgmath-rs"
+
+[dependencies.sdl2]
+git = "https://github.com/AngryLawyer/rust-sdl2"
+
+[dependencies.gl]
+git = "https://github.com/bjz/gl-rs"
