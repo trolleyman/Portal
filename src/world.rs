@@ -1,7 +1,10 @@
-use DT;
+use prelude::*;
+
 use entity::{Entity, Camera};
-use sdl2::keyboard::{Keycode, Mod};
+use sdl2::keyboard::{KeyboardState, Keycode, Mod};
 use render::Render;
+
+use cg::{self, Basis3};
 
 #[derive(Clone)]
 pub struct World {
@@ -19,9 +22,30 @@ impl World {
 		}
 	}
 	
-	pub fn tick(&mut self, dt: DT) {
+	pub fn tick(&mut self, dt: DT, state: &KeyboardState) {
 		for ent in self.entities.iter_mut() {
 			ent.tick(dt);
+		}
+		
+		let speed = 0.5;
+		let xrot = self.camera.xrot;
+		if state.is_scancode_pressed(Scan::W) {
+			self.camera.translate(Basis3::from_angle_y(-cg::rad(xrot)).rotate_vector(&Vec3::new(0.0, 0.0, -speed).mul_s(dt)));
+		}
+		if state.is_scancode_pressed(Scan::S) {
+			self.camera.translate(Basis3::from_angle_y(-cg::rad(xrot)).rotate_vector(&Vec3::new(0.0, 0.0,  speed).mul_s(dt)));
+		}
+		if state.is_scancode_pressed(Scan::A) {
+			self.camera.translate(Basis3::from_angle_y(-cg::rad(xrot)).rotate_vector(&Vec3::new(-speed, 0.0, 0.0).mul_s(dt)));
+		}
+		if state.is_scancode_pressed(Scan::D) {
+			self.camera.translate(Basis3::from_angle_y(-cg::rad(xrot)).rotate_vector(&Vec3::new( speed, 0.0, 0.0).mul_s(dt)));
+		}
+		if state.is_scancode_pressed(Scan::Q) {
+			self.camera.translate(Basis3::from_angle_y(-cg::rad(xrot)).rotate_vector(&Vec3::new(0.0,  speed, 0.0).mul_s(dt)));
+		}
+		if state.is_scancode_pressed(Scan::E) {
+			self.camera.translate(Basis3::from_angle_y(-cg::rad(xrot)).rotate_vector(&Vec3::new(0.0, -speed, 0.0).mul_s(dt)));
 		}
 	}
 	
@@ -38,5 +62,13 @@ impl World {
 	
 	pub fn handle_keyup(&mut self, key: &Keycode, keymod: &Mod) {
 		let (_, _) = (key, keymod);
+	}
+	
+	pub fn handle_mouse_motion(&mut self, x: f32, y: f32) {
+		self.camera.rotate(x as f32 * 0.1, y as f32 * 0.1);
+	}
+	
+	pub fn print(&self) {
+		println!("x:{:.4}, y:{:.4}, z:{:.4}", self.camera.pos.x, self.camera.pos.y, self.camera.pos.z);
 	}
 }

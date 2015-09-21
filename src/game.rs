@@ -1,14 +1,13 @@
+use prelude::*;
 
-use DT;
 use world::World;
 use render::Render;
 
 use sdl2;
+use sdl2::Sdl;
 use sdl2::event::Event;
-
-mod Key {
-	pub use sdl2::keyboard::Keycode::*;
-}
+use sdl2::keyboard::KeyboardState;
+use sdl2::mouse::MouseUtil;
 
 pub struct Game {
 	worlds: [World; 2],
@@ -16,16 +15,22 @@ pub struct Game {
 	current_index: usize,
 	to_quit: bool,
 	paused: bool,
+	mouse_util: MouseUtil
 }
 impl Game {
-	pub fn new(world: World) -> Game {
+	pub fn new(world: World, mouse_util: MouseUtil) -> Game {
 		Game {
 			worlds: [world.clone(), world],
 			next_index: 1,
 			current_index: 0,
 			to_quit: false,
 			paused: false,
+			mouse_util: mouse_util,
 		}
+	}
+	
+	pub fn get_current_world<'a>(&'a self) -> &'a World {
+		&self.worlds[self.current_index]
 	}
 	
 	pub fn should_quit(&self) -> bool {
@@ -35,7 +40,7 @@ impl Game {
 		self.paused
 	}
 	
-	pub fn handle_events(&mut self, pump: &mut sdl2::EventPump) {
+	pub fn handle_events(&mut self, sdl: &Sdl, pump: &mut sdl2::EventPump) {
 		for event in pump.poll_iter() {
 			match event {
 				Event::Quit{..} => {
@@ -62,9 +67,14 @@ impl Game {
 				},
 				Event::MouseMotion{xrel:x, yrel:y, ..} => {
 					if !self.paused {
-						self.worlds[self.next_index].camera.rotate(x as f32, y as f32);
+						self.worlds[self.next_index].handle_mouse_motion(x as f32, y as f32);
 					}
-				}
+				},
+				Event::MouseButtonDown{ mouse_btn, x, y, .. } => {
+					if self.paused && mouse_btn == sdl2::mouse::Mouse::Left {
+						self.toggle_paused();
+					}
+				},
 				_ => {}
 			}
 		}
@@ -72,10 +82,11 @@ impl Game {
 	
 	fn toggle_paused(&mut self) {
 		self.paused = !self.paused;
+		self.mouse_util.set_relative_mouse_mode(!self.paused);
 	}
 	
-	pub fn tick(&mut self, dt: DT) {
-		self.worlds[self.next_index].tick(dt);
+	pub fn tick(&mut self, dt: DT, state: &KeyboardState) {
+		self.worlds[self.next_index].tick(dt, state);
 	}
 	
 	pub fn swap(&mut self) {
