@@ -6,10 +6,11 @@ use std::fs::File;
 use std::io::prelude::*;
 use std::ops::Drop;
 use std::mem;
+use std::sync::Arc;
 use std::ptr::null;
 use std::ffi::CString;
 
-use cg;
+use na;
 
 use sdl2::video::{GLContext, Window};
 
@@ -18,14 +19,14 @@ use gl::types::*;
 
 pub struct Render<'a> {
 	pub win: &'a mut Window,
-	pub gl_context: &'a GLContext,
+	pub gl_context: &'a mut GLContext,
 	pub main_shader: Shader,
 	pub vp_mat: Mat4,
 	pub m_mat: Mat4,
 }
 
 impl<'a> Render<'a> {
-	pub fn new(win: &'a mut Window, context: &'a GLContext) -> Render<'a> {
+	pub fn new(win: &'a mut Window, context: &'a mut GLContext) -> Render<'a> {
 		//let _ = win.gl_set_context_to_current();
 		let ren = Render {
 			win: win,
@@ -34,10 +35,11 @@ impl<'a> Render<'a> {
 					Ok(s) => s,
 					Err(e) => panic!("{}", e),
 				},
-			vp_mat: Mat4::identity(),
-			m_mat: Mat4::identity(),
+			vp_mat: Mat4::new_identity(4),
+			m_mat: Mat4::new_identity(4),
 		};
 		unsafe {
+			gl::Enable(gl::CULL_FACE);
 			gl::Enable(gl::DEPTH_TEST);
 			gl::DepthFunc(gl::LESS);
 		}
@@ -59,7 +61,7 @@ impl<'a> Render<'a> {
 	pub fn set_camera(&mut self, cam: &Camera) {
 		// Recalculate VP matrix
 		let (w, h) = self.win.drawable_size();
-		let projection = cg::perspective(cam.get_fov(), w as f32 / h as f32, 0.01, 500.0);
+		let projection = Persp3::new(w as f32 / h as f32, cam.get_fov(), 0.01, 500.0).to_mat();
 		let view = cam.get_view();
 		self.vp_mat = projection * view;
 	}
@@ -67,6 +69,13 @@ impl<'a> Render<'a> {
 	pub fn set_model_mat(&mut self, mat: Mat4) {
 		self.m_mat = mat;
 		self.main_shader.set_mvp(self.vp_mat * self.m_mat);
+	}
+	
+	pub fn update_size(&mut self) {
+		let (w, h) = self.win.drawable_size();
+		unsafe {
+			gl::Viewport(0, 0, w as i32, h as i32);
+		}
 	}
 }
 
@@ -174,7 +183,7 @@ impl Shader {
 	
 	pub fn set_mvp(&self, mvp: Mat4) {
 		unsafe {
-			gl::UniformMatrix4fv(self.mvp_pos, 1, gl::FALSE, &mvp[0][0] as *const GLfloat);
+			gl::UniformMatrix4fv(self.mvp_pos, 1, gl::FALSE, &mvp.as_array()[0][0] as *const GLfloat);
 		}
 	}
 }
@@ -191,86 +200,168 @@ impl Drop for Shader {
 }
 
 pub struct MeshBuilder {
-	verts: Vec<Vec3>,
-	colors: Vec<Vec3>,
+	verts: Vec<Pnt3>,
+	indices: Vec<na::Pnt3<usize>>,
+	uvs: Vec<Pnt2>,
+	normals: Vec<Vec3>
 }
 impl MeshBuilder {
 	pub fn new() -> MeshBuilder {
 		MeshBuilder {
 			verts: Vec::new(),
-			colors: Vec::new()
+			indices: Vec::new(),
+			uvs: Vec::new(),
+			normals: Vec::new(),
 		}
 	}
 	
-	pub fn push(&mut self, vert: Vec3, color: Vec3) {
-		self.verts.push(vert);
-		self.colors.push(color);
-	}
-	pub fn vertex(&mut self, vert: Vec3) {
+	pub fn vertex(&mut self, vert: Pnt3) {
 		self.verts.push(vert);
 	}
-	pub fn color(&mut self, color: Vec3) {
-		self.colors.push(color);
+	pub fn index(&mut self, index: na::Pnt3<usize>) {
+		self.indices.push(index);
+	}
+	pub fn uv(&mut self, uv: Pnt2) {
+		self.uvs.push(uv);
+	}
+	pub fn normal(&mut self, normal: Vec3) {
+		self.normals.push(normal);
 	}
 	
-	pub fn finish(&self) -> Mesh {
-		Mesh::new(&self.verts, &self.colors)
+	pub fn finish(self) -> Mesh {
+		let inds = if self.indices.len() == 0 {
+			None
+		} else {
+			Some(Arc::new(self.indices))
+		};
+		let uvs = if self.uvs.len() == 0 {
+			None
+		} else {
+			Some(Arc::new(self.uvs))
+		};
+		let norms = if self.normals.len() == 0 {
+			None
+		} else {
+			Some(Arc::new(self.normals))
+		};
+		Mesh::new(Arc::new(self.verts), inds, uvs, norms)
 	}
 }
 
 // This makes it so that Meshes leak during the program as entities die, but it does speed up the process of cloning the world
-#[derive(Debug, Copy, Clone)]
+#[derive(Clone)]
 pub struct Mesh {
 	vao: GLuint,
 	len: GLsizei,
 	verts: GLuint,
-	colors: GLuint,
+	indices: GLuint,
+	uvs: Option<GLuint>,
+	normals: Option<GLuint>,
+	mesh: TriMesh,
 }
 impl Mesh {
-	pub fn new(verts: &[Vec3], colors: &[Vec3]) -> Mesh {
+	pub fn new(vertices: Arc<Vec<Pnt3>>,
+		       indices: Option<Arc<Vec<na::Pnt3<usize>>>>,
+		       uvs: Option<Arc<Vec<Pnt2>>>,
+		       normals: Option<Arc<Vec<Vec3>>>) -> Mesh {
+		let inds = match indices {
+			Some(inds) => {
+				inds
+			},
+			None => {
+				let inds = Vec::new();
+				
+				for i in (0..vertices.len()) {
+					inds.push(na::Pnt3::new(i * 3, i * 3 + 1, i * 3 + 2));
+				}
+				Arc::new(inds)
+			}
+		};
+		let mesh = TriMesh::new(vertices, inds, uvs, normals);
+		
+		Mesh::from_nc_mesh(mesh)
+	}
+	pub fn from_nc_mesh(mesh: TriMesh) -> Mesh {
 		unsafe {
+			let verts = mesh.vertices();
+			let inds = mesh.indices();
+			let uvs = mesh.uvs();
+			let norms = mesh.normals();
+			
 			let mut vao: GLuint = 0;
 			gl::GenVertexArrays(1, &mut vao);
 			gl::BindVertexArray(vao);
 			
-			let mut vbo: [GLuint; 2] = [0, 0];
-			gl::GenBuffers(2, &mut vbo[0]);
+			let mut vert_vbo = 0;
+			let mut inds_vbo = 0;
+			gl::GenBuffers(1, &mut vert_vbo);
+			gl::GenBuffers(1, &mut inds_vbo);
 			
 			// Specify that the data to be pushed is the verts
-			gl::BindBuffer(gl::ARRAY_BUFFER, vbo[0]);
+			gl::BindBuffer(gl::ARRAY_BUFFER, vert_vbo);
 			// Push the verts to the GPU
-			gl::BufferData(gl::ARRAY_BUFFER, (verts.len() * mem::size_of::<Vec3>()) as i64, mem::transmute(verts.as_ptr()), gl::STATIC_DRAW);
+			gl::BufferData(gl::ARRAY_BUFFER, (verts.len() * mem::size_of::<Pnt3>()) as i64, mem::transmute(verts.as_ptr()), gl::STATIC_DRAW);
 			// Specify that it is attribute 0
 			gl::VertexAttribPointer(0, 3, gl::FLOAT, gl::FALSE, 0, null());
 			gl::EnableVertexAttribArray(0);
 			
-			// Do the same, but with the colors
-			gl::BindBuffer(gl::ARRAY_BUFFER, vbo[1]);
-			gl::BufferData(gl::ARRAY_BUFFER, (colors.len() * mem::size_of::<Vec3>()) as i64, mem::transmute(colors.as_ptr()), gl::STATIC_DRAW);
-			gl::VertexAttribPointer(1, 3, gl::FLOAT, gl::FALSE, 0, null());
+			// Now the indices
+			gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, inds_vbo);
+			gl::BufferData(gl::ELEMENT_ARRAY_BUFFER, (inds.len() * mem::size_of::<na::Pnt3<usize>>()) as i64, mem::transmute(inds.as_ptr()), gl::STATIC_DRAW);
+			
+			// Now the uvs
+			let mut uv_vbo = 0;
+			gl::GenBuffers(1, &mut uv_vbo);
+			gl::BindBuffer(gl::ARRAY_BUFFER, uv_vbo);
+			match uvs {
+				&Some(ref uvs) => {
+					gl::BufferData(gl::ARRAY_BUFFER, (uvs.len() * mem::size_of::<Pnt2>()) as i64, mem::transmute(uvs.as_ptr()), gl::STATIC_DRAW);
+				},
+				&None => {}
+			}
+			gl::VertexAttribPointer(1, 2, gl::FLOAT, gl::FALSE, 0, null());
 			gl::EnableVertexAttribArray(1);
 			
-			// So that we copy the verts + colors over before they are freed...
+			// Now the normals
+			let mut norm_vbo = 0;
+			gl::GenBuffers(1, &mut norm_vbo);
+			gl::BindBuffer(gl::ARRAY_BUFFER, norm_vbo);
+			match norms {
+				&Some(ref norms) => {
+					gl::BufferData(gl::ARRAY_BUFFER, (norms.len() * mem::size_of::<Vec3>()) as i64, mem::transmute(norms.as_ptr()), gl::STATIC_DRAW);
+				},
+				&None => {}
+			}
+			gl::VertexAttribPointer(2, 3, gl::FLOAT, gl::FALSE, 0, null());
+			gl::EnableVertexAttribArray(2);
+			
+			// So that we copy the stuff over before they are freed...
 			gl::Flush();
 			
 			Mesh {
 				vao: vao,
-				len: verts.len() as GLsizei,
-				verts: vbo[0],
-				colors: vbo[1],
+				len: inds.len() as GLsizei,
+				verts: vert_vbo,
+				indices: inds_vbo,
+				uvs: if uvs.is_some() { Some(uv_vbo) } else { None },
+				normals: if norms.is_some() { Some(norm_vbo) } else { None },
+				mesh: mesh,
 			}
 		}
 	}
+	
 	pub fn new_triangle(scale: f32) -> Mesh {
-		Mesh::new(&[
-			Vec3::new(-0.5,  0.1, -1.0).mul_s(scale),
-			Vec3::new( 0.0,  1.1, -1.0).mul_s(scale),
-			Vec3::new( 0.5,  0.1, -1.0).mul_s(scale),
-		], &[
-			Vec3::new(1.0, 0.0, 0.0),
-			Vec3::new(0.0, 1.0, 0.0),
-			Vec3::new(0.0, 0.0, 1.0),
-		])
+		Mesh::new(Arc::new(vec![
+			Vec3::new(-0.5,  0.1, -1.0) * scale,
+			Vec3::new( 0.0,  1.1, -1.0) * scale,
+			Vec3::new( 0.5,  0.1, -1.0) * scale,
+		]), Arc::new(vec![
+			
+		]), Arc::new(vec![
+			
+		]), Arc::new(vec![
+			
+		]))
 	}
 	pub fn new_planes(num_w: u32, num_h: u32, w: f32, h: f32, color1: Vec3, color2: Vec3) -> Mesh {
 		let mut mb = MeshBuilder::new();
@@ -301,7 +392,7 @@ impl Mesh {
 			ren.main_shader.use_prog();
 			
 			gl::BindVertexArray(self.vao);
-			gl::DrawArrays(gl::TRIANGLES, 0, self.len);
+			gl::DrawElements(gl::TRIANGLES, self.len, gl::FLOAT, null());
 		}
 	}
 }
