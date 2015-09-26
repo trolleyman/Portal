@@ -5,7 +5,7 @@ use render::Render;
 
 use sdl2;
 use sdl2::Sdl;
-use sdl2::event::Event;
+use sdl2::event::{Event, WindowEventId};
 use sdl2::keyboard::KeyboardState;
 use sdl2::mouse::MouseUtil;
 
@@ -40,7 +40,7 @@ impl Game {
 		self.paused
 	}
 	
-	pub fn handle_events(&mut self, sdl: &Sdl, pump: &mut sdl2::EventPump) {
+	pub fn handle_events(&mut self, sdl: &Sdl, pump: &mut sdl2::EventPump, ren: &mut Render) {
 		for event in pump.poll_iter() {
 			match event {
 				Event::Quit{..} => {
@@ -48,16 +48,14 @@ impl Game {
 					break;
 				},
 				Event::KeyDown{ keycode:key, keymod, repeat, .. } => {
-					if key.is_some() {
-						match key.unwrap() {
-							Key::Escape => {
-								self.toggle_paused();
-							},
-							_ => {}
-						}
-						if !self.paused {
-							self.worlds[self.next_index].handle_keydown(&key.unwrap(), &keymod, repeat);
-						}
+					match key {
+						Some(Key::Escape) => {
+							self.toggle_paused();
+						},
+						_ => {}
+					}
+					if !self.paused {
+						self.worlds[self.next_index].handle_keydown(&key.unwrap(), &keymod, repeat);
 					}
 				},
 				Event::KeyUp{ keycode:key, keymod, .. } => {
@@ -73,6 +71,14 @@ impl Game {
 				Event::MouseButtonDown{ mouse_btn, x, y, .. } => {
 					if self.paused && mouse_btn == sdl2::mouse::Mouse::Left {
 						self.toggle_paused();
+					}
+				},
+				Event::Window{ win_event_id, .. } => {
+					match win_event_id {
+						WindowEventId::SizeChanged => {
+							ren.update_size();
+						},
+						_ => {}
 					}
 				},
 				_ => {}

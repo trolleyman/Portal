@@ -6,10 +6,11 @@ use std::fs::File;
 use std::io::prelude::*;
 use std::ops::Drop;
 use std::mem;
+use std::sync::Arc;
 use std::ptr::null;
 use std::ffi::CString;
 
-use cg;
+use na;
 
 use sdl2::video::{GLContext, Window};
 
@@ -18,14 +19,14 @@ use gl::types::*;
 
 pub struct Render<'a> {
 	pub win: &'a mut Window,
-	pub gl_context: &'a GLContext,
+	pub gl_context: &'a mut GLContext,
 	pub main_shader: Shader,
 	pub vp_mat: Mat4,
 	pub m_mat: Mat4,
 }
 
 impl<'a> Render<'a> {
-	pub fn new(win: &'a mut Window, context: &'a GLContext) -> Render<'a> {
+	pub fn new(win: &'a mut Window, context: &'a mut GLContext) -> Render<'a> {
 		//let _ = win.gl_set_context_to_current();
 		let ren = Render {
 			win: win,
@@ -34,10 +35,11 @@ impl<'a> Render<'a> {
 					Ok(s) => s,
 					Err(e) => panic!("{}", e),
 				},
-			vp_mat: Mat4::identity(),
-			m_mat: Mat4::identity(),
+			vp_mat: Mat4::new_identity(4),
+			m_mat: Mat4::new_identity(4),
 		};
 		unsafe {
+			gl::Enable(gl::CULL_FACE);
 			gl::Enable(gl::DEPTH_TEST);
 			gl::DepthFunc(gl::LESS);
 		}
@@ -59,7 +61,7 @@ impl<'a> Render<'a> {
 	pub fn set_camera(&mut self, cam: &Camera) {
 		// Recalculate VP matrix
 		let (w, h) = self.win.drawable_size();
-		let projection = cg::perspective(cam.get_fov(), w as f32 / h as f32, 0.01, 500.0);
+		let projection = Persp3::new(w as f32 / h as f32, cam.get_fov(), 0.01, 500.0).to_mat();
 		let view = cam.get_view();
 		self.vp_mat = projection * view;
 	}
@@ -67,6 +69,13 @@ impl<'a> Render<'a> {
 	pub fn set_model_mat(&mut self, mat: Mat4) {
 		self.m_mat = mat;
 		self.main_shader.set_mvp(self.vp_mat * self.m_mat);
+	}
+	
+	pub fn update_size(&mut self) {
+		let (w, h) = self.win.drawable_size();
+		unsafe {
+			gl::Viewport(0, 0, w as i32, h as i32);
+		}
 	}
 }
 
@@ -174,7 +183,7 @@ impl Shader {
 	
 	pub fn set_mvp(&self, mvp: Mat4) {
 		unsafe {
-			gl::UniformMatrix4fv(self.mvp_pos, 1, gl::FALSE, &mvp[0][0] as *const GLfloat);
+			gl::UniformMatrix4fv(self.mvp_pos, 1, gl::FALSE, &mvp.as_array()[0][0] as *const GLfloat);
 		}
 	}
 }
@@ -261,6 +270,7 @@ impl Mesh {
 			}
 		}
 	}
+	
 	pub fn new_triangle(scale: f32) -> Mesh {
 		Mesh::new(&[
 			Vec3::new(-0.5,  0.1, -1.0).mul_s(scale),

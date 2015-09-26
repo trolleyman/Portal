@@ -1,10 +1,10 @@
 use prelude::*;
 
-use entity::{Entity, Camera};
+use entity::{Entity, Camera, Portal};
 use sdl2::keyboard::{KeyboardState, Keycode, Mod};
 use render::Render;
 
-use cg::{self, Basis3};
+use nc;
 
 #[derive(Clone)]
 pub struct World {
@@ -12,14 +12,23 @@ pub struct World {
 	pub camera: Camera,
 	/// All of the entities in the world.
 	pub entities: Vec<Entity>,
+	portals: Option<(Portal, Portal)>,
 }
 
 impl World {
 	pub fn new(cam: Camera) -> World {
 		World {
 			camera: cam,
-			entities: Vec::new()
+			entities: Vec::new(),
+			portals: None,
 		}
+	}
+	
+	pub fn set_portals(&mut self, p1: Portal, p2: Portal) {
+		self.portals = Some((p1, p2));
+	}
+	pub fn get_portals(&self) -> Option<(Portal, Portal)> {
+		self.portals
 	}
 	
 	pub fn tick(&mut self, dt: DT, state: &KeyboardState) {
@@ -27,25 +36,28 @@ impl World {
 			ent.tick(dt);
 		}
 		
-		let speed = 0.5;
-		let xrot = self.camera.xrot;
+		let speed = if state.is_scancode_pressed(Scan::LShift) || state.is_scancode_pressed(Scan::RShift) {2.0}
+		            else if state.is_scancode_pressed(Scan::LAlt) || state.is_scancode_pressed(Scan::RAlt) {0.1}
+		            else {0.5};
+		let dp = speed * dt;
+		let rot = Rot3::new(Vec3::new(0.0, -self.camera.get_xrot(), 0.0));
 		if state.is_scancode_pressed(Scan::W) {
-			self.camera.translate(Basis3::from_angle_y(-cg::rad(xrot)).rotate_vector(&Vec3::new(0.0, 0.0, -speed).mul_s(dt)));
+			self.camera.translate(rot.rotate(&Vec3::new(0.0, 0.0,  dp)));
 		}
 		if state.is_scancode_pressed(Scan::S) {
-			self.camera.translate(Basis3::from_angle_y(-cg::rad(xrot)).rotate_vector(&Vec3::new(0.0, 0.0,  speed).mul_s(dt)));
+			self.camera.translate(rot.rotate(&Vec3::new(0.0, 0.0, -dp)));
 		}
 		if state.is_scancode_pressed(Scan::A) {
-			self.camera.translate(Basis3::from_angle_y(-cg::rad(xrot)).rotate_vector(&Vec3::new(-speed, 0.0, 0.0).mul_s(dt)));
+			self.camera.translate(rot.rotate(&Vec3::new( dp, 0.0, 0.0)));
 		}
 		if state.is_scancode_pressed(Scan::D) {
-			self.camera.translate(Basis3::from_angle_y(-cg::rad(xrot)).rotate_vector(&Vec3::new( speed, 0.0, 0.0).mul_s(dt)));
+			self.camera.translate(rot.rotate(&Vec3::new(-dp, 0.0, 0.0)));
 		}
 		if state.is_scancode_pressed(Scan::Q) {
-			self.camera.translate(Basis3::from_angle_y(-cg::rad(xrot)).rotate_vector(&Vec3::new(0.0,  speed, 0.0).mul_s(dt)));
+			self.camera.translate(rot.rotate(&Vec3::new(0.0,  dp, 0.0)));
 		}
 		if state.is_scancode_pressed(Scan::E) {
-			self.camera.translate(Basis3::from_angle_y(-cg::rad(xrot)).rotate_vector(&Vec3::new(0.0, -speed, 0.0).mul_s(dt)));
+			self.camera.translate(rot.rotate(&Vec3::new(0.0, -dp, 0.0)));
 		}
 	}
 	
@@ -69,6 +81,6 @@ impl World {
 	}
 	
 	pub fn print(&self) {
-		println!("x:{:.4}, y:{:.4}, z:{:.4}", self.camera.pos.x, self.camera.pos.y, self.camera.pos.z);
+		println!("x:{:.4}, y:{:.4}, z:{:.4}, xrot:{:.4}, yrot:{:.4}", self.camera.get_pos().x, self.camera.get_pos().y, self.camera.get_pos().z, self.camera.get_xrot(), self.camera.get_yrot());
 	}
 }

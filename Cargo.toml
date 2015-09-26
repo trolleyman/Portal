@@ -3,8 +3,15 @@ name = "Portal"
 version = "0.1.0"
 authors = ["trolleyman <cgtrolley@gmail.com>"]
 
-[dependencies.cgmath]
-git = "https://github.com/bjz/cgmath-rs"
+[dependencies]
+nalgebra = "*"
+ncollide = "*"
+
+#[dependencies.nalgebra]
+#git = "https://github.com/sebcrozet/nalgebra"
+#
+#[dependencies.ncollide]
+#git = "https://github.com/sebcrozet/ncollide"
 
 [dependencies.sdl2]
 git = "https://github.com/AngryLawyer/rust-sdl2"
