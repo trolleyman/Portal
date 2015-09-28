@@ -4,8 +4,6 @@ use entity::{Entity, Camera, Portal};
 use sdl2::keyboard::{KeyboardState, Keycode, Mod};
 use render::Render;
 
-use nc;
-
 #[derive(Clone)]
 pub struct World {
 	/// The camera information

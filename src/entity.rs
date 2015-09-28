@@ -2,8 +2,6 @@ use prelude::*;
 
 use render::{Render, Mesh};
 
-use nc;
-
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub enum EntityType {
 	Dynamic,

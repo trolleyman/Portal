@@ -6,7 +6,6 @@ use std::fs::File;
 use std::io::prelude::*;
 use std::ops::Drop;
 use std::mem;
-use std::sync::Arc;
 use std::ptr::null;
 use std::ffi::CString;
 
@@ -16,6 +15,8 @@ use sdl2::video::{GLContext, Window};
 
 use gl::{self};
 use gl::types::*;
+
+pub type Index = GLushort;
 
 pub struct Render<'a> {
 	pub win: &'a mut Window,
@@ -52,7 +53,7 @@ impl<'a> Render<'a> {
 		self.win.show();
 		self.win.gl_swap_window();
 		unsafe {
-			gl::ClearColor(0.0, 0.0, 0.1, 1.0);
+			gl::ClearColor(0.0, 0.0, 0.3, 1.0);
 			gl::Clear(gl::COLOR_BUFFER_BIT);
 			gl::Clear(gl::DEPTH_BUFFER_BIT);
 		}
@@ -127,9 +128,9 @@ impl Shader {
 			
 			gl::LinkProgram(prog);
 			
-			let mut isLinked: GLint = 0;
-			gl::GetProgramiv(prog, gl::LINK_STATUS, &mut isLinked);
-			if isLinked == gl::FALSE as GLint {
+			let mut is_linked: GLint = 0;
+			gl::GetProgramiv(prog, gl::LINK_STATUS, &mut is_linked);
+			if is_linked == gl::FALSE as GLint {
 				let mut len: GLint = 0;
 				gl::GetProgramiv(prog, gl::INFO_LOG_LENGTH, &mut len);
 				
@@ -158,9 +159,9 @@ impl Shader {
 			gl::ShaderSource(id, 1, ::std::mem::transmute(&src.as_ptr()), ::std::mem::transmute(&src.len()));
 			gl::CompileShader(id);
 			
-			let mut isCompiled: GLint = 0;
-			gl::GetShaderiv(id, gl::COMPILE_STATUS, &mut isCompiled);
-			if isCompiled == gl::FALSE as GLint {
+			let mut is_compiled: GLint = 0;
+			gl::GetShaderiv(id, gl::COMPILE_STATUS, &mut is_compiled);
+			if is_compiled == gl::FALSE as GLint {
 				let mut len: GLint = 0;
 				gl::GetShaderiv(id, gl::INFO_LOG_LENGTH, &mut len);
 				
@@ -200,30 +201,37 @@ impl Drop for Shader {
 }
 
 pub struct MeshBuilder {
-	verts: Vec<Vec3>,
+	verts: Vec<Pnt3>,
 	colors: Vec<Vec3>,
+	indices: Vec<na::Vec3<Index>>,
 }
 impl MeshBuilder {
 	pub fn new() -> MeshBuilder {
 		MeshBuilder {
 			verts: Vec::new(),
-			colors: Vec::new()
+			colors: Vec::new(),
+			indices: Vec::new(),
 		}
 	}
 	
-	pub fn push(&mut self, vert: Vec3, color: Vec3) {
+	pub fn push(&mut self, vert: Pnt3, color: Vec3) -> Index {
 		self.verts.push(vert);
 		self.colors.push(color);
+		self.verts.len() as Index - 1
 	}
-	pub fn vertex(&mut self, vert: Vec3) {
-		self.verts.push(vert);
-	}
-	pub fn color(&mut self, color: Vec3) {
-		self.colors.push(color);
+	pub fn index(&mut self, i: na::Vec3<Index>) {
+		self.indices.push(i);
 	}
 	
 	pub fn finish(&self) -> Mesh {
-		Mesh::new(&self.verts, &self.colors)
+		if self.indices.len() == 0 {
+			// println!("===============================");
+			// println!("verts:   {:?}", self.verts);
+			// println!("colors:  {:?}", self.colors);
+			Mesh::new(&self.verts, &self.colors)
+		} else {
+			Mesh::indexed(&self.verts, &self.indices, &self.colors)
+		}
 	}
 }
 
@@ -232,11 +240,33 @@ impl MeshBuilder {
 pub struct Mesh {
 	vao: GLuint,
 	len: GLsizei,
+	indices: Option<GLuint>,
 	verts: GLuint,
 	colors: GLuint,
 }
 impl Mesh {
-	pub fn new(verts: &[Vec3], colors: &[Vec3]) -> Mesh {
+	pub fn indexed(verts: &[Pnt3], indices: &[na::Vec3<Index>], colors: &[Vec3]) -> Mesh {
+		unsafe {
+			// println!("===============================");
+			// println!("verts:   {:?}", verts);
+			// println!("colors:  {:?}", colors);
+			// println!("indices: {:?}", indices);
+			
+			let mut m = Mesh::new(verts, colors);
+			
+			let mut inds = 0;
+			gl::GenBuffers(1, &mut inds);
+			gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, inds);
+			gl::BufferData(gl::ELEMENT_ARRAY_BUFFER, (indices.len() * mem::size_of::<na::Vec3<Index>>()) as i64, mem::transmute(indices.as_ptr()), gl::STATIC_DRAW);
+			gl::Flush();
+			
+			m.indices = Some(inds);
+			m.len = indices.len() as GLsizei * 3;
+			m
+		}
+	}
+	
+	pub fn new(verts: &[Pnt3], colors: &[Vec3]) -> Mesh {
 		unsafe {
 			let mut vao: GLuint = 0;
 			gl::GenVertexArrays(1, &mut vao);
@@ -265,21 +295,55 @@ impl Mesh {
 			Mesh {
 				vao: vao,
 				len: verts.len() as GLsizei,
+				indices: None,
 				verts: vbo[0],
 				colors: vbo[1],
 			}
 		}
 	}
-	
+	/*
+	pub fn new_rectangle(w: f32, h: f32, normal: Vec3, tangent: Vec3) -> Mesh {
+		let planeY = normal.normalize()
+		
+		Mesh::indexed(&[
+				
+			], &[
+				
+			], &[
+				
+			])
+	}*/
 	pub fn new_triangle(scale: f32) -> Mesh {
-		Mesh::new(&[
-			Vec3::new(-0.5,  0.1, -1.0).mul_s(scale),
-			Vec3::new( 0.0,  1.1, -1.0).mul_s(scale),
-			Vec3::new( 0.5,  0.1, -1.0).mul_s(scale),
+		Mesh::indexed(&[
+			Pnt3::new(-0.5,  0.0, 0.0) * scale,
+			Pnt3::new( 0.5,  0.0, 0.0) * scale,
+			Pnt3::new( 0.0,  1.0, 0.0) * scale,
+		], &[
+			na::Vec3::new(0, 1, 2),
+			na::Vec3::new(0, 2, 1),
 		], &[
 			Vec3::new(1.0, 0.0, 0.0),
 			Vec3::new(0.0, 1.0, 0.0),
 			Vec3::new(0.0, 0.0, 1.0),
+		])
+	}
+	pub fn new_square(scale: f32) -> Mesh {
+		Mesh::indexed(&[
+			Pnt3::new(-0.5,  1.0, 0.0) * scale,
+			Pnt3::new(-0.5,  0.0, 0.0) * scale,
+			Pnt3::new( 0.5,  0.0, 0.0) * scale,
+			Pnt3::new( 0.5,  1.0, 0.0) * scale,
+		], &[
+			na::Vec3::new(0, 1, 2),
+			na::Vec3::new(2, 3, 0),
+			
+			na::Vec3::new(0, 2, 1),
+			na::Vec3::new(2, 0, 3),
+		], &[
+			Vec3::new(1.0, 0.0, 0.0),
+			Vec3::new(0.0, 1.0, 0.0),
+			Vec3::new(0.0, 0.0, 1.0),
+			Vec3::new(1.0, 1.0, 1.0),
 		])
 	}
 	pub fn new_planes(num_w: u32, num_h: u32, w: f32, h: f32, color1: Vec3, color2: Vec3) -> Mesh {
@@ -293,13 +357,14 @@ impl Mesh {
 				} else {
 					color2
 				};
-				mb.push(Vec3::new((x as f32      ) * (w / num_w as f32) - offset_x, 0.0, (y as f32      ) * (h / num_h as f32) - offset_y), col);
-				mb.push(Vec3::new((x as f32 + 1.0) * (w / num_w as f32) - offset_x, 0.0, (y as f32      ) * (h / num_h as f32) - offset_y), col);
-				mb.push(Vec3::new((x as f32 + 1.0) * (w / num_w as f32) - offset_x, 0.0, (y as f32 + 1.0) * (h / num_h as f32) - offset_y), col);
+				let mut i = [0 as Index, 0, 0, 0];
+				i[0] = mb.push(Pnt3::new((x as f32      ) * (w / num_w as f32) - offset_x, 0.0, (y as f32      ) * (h / num_h as f32) - offset_y), col);
+				i[1] = mb.push(Pnt3::new((x as f32      ) * (w / num_w as f32) - offset_x, 0.0, (y as f32 + 1.0) * (h / num_h as f32) - offset_y), col);
+				i[2] = mb.push(Pnt3::new((x as f32 + 1.0) * (w / num_w as f32) - offset_x, 0.0, (y as f32 + 1.0) * (h / num_h as f32) - offset_y), col);
+				i[3] = mb.push(Pnt3::new((x as f32 + 1.0) * (w / num_w as f32) - offset_x, 0.0, (y as f32      ) * (h / num_h as f32) - offset_y), col);
 				
-				mb.push(Vec3::new((x as f32      ) * (w / num_w as f32) - offset_x, 0.0, (y as f32      ) * (h / num_h as f32) - offset_y), col);
-				mb.push(Vec3::new((x as f32 + 1.0) * (w / num_w as f32) - offset_x, 0.0, (y as f32 + 1.0) * (h / num_h as f32) - offset_y), col);
-				mb.push(Vec3::new((x as f32      ) * (w / num_w as f32) - offset_x, 0.0, (y as f32 + 1.0) * (h / num_h as f32) - offset_y), col);
+				mb.index(na::Vec3::new(i[0], i[1], i[2]));
+				mb.index(na::Vec3::new(i[2], i[3], i[0]));
 			}
 		}
 		mb.finish()
@@ -311,7 +376,11 @@ impl Mesh {
 			ren.main_shader.use_prog();
 			
 			gl::BindVertexArray(self.vao);
-			gl::DrawArrays(gl::TRIANGLES, 0, self.len);
+			
+			match self.indices {
+				Some(_) => gl::DrawElements(gl::TRIANGLES, self.len, gl::UNSIGNED_SHORT, null()),
+				None => gl::DrawArrays(gl::TRIANGLES, 0, self.len),
+			}
 		}
 	}
 }

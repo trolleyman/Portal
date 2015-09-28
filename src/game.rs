@@ -40,7 +40,7 @@ impl Game {
 		self.paused
 	}
 	
-	pub fn handle_events(&mut self, sdl: &Sdl, pump: &mut sdl2::EventPump, ren: &mut Render) {
+	pub fn handle_events(&mut self, _sdl: &Sdl, pump: &mut sdl2::EventPump, ren: &mut Render) {
 		for event in pump.poll_iter() {
 			match event {
 				Event::Quit{..} => {
@@ -68,7 +68,7 @@ impl Game {
 						self.worlds[self.next_index].handle_mouse_motion(x as f32, y as f32);
 					}
 				},
-				Event::MouseButtonDown{ mouse_btn, x, y, .. } => {
+				Event::MouseButtonDown{ mouse_btn, .. } => {
 					if self.paused && mouse_btn == sdl2::mouse::Mouse::Left {
 						self.toggle_paused();
 					}

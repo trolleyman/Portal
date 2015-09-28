@@ -24,9 +24,11 @@ pub mod prelude {
 		ToHomogeneous, RotationTo, Transform, Transformation, Translate, Translation,
 	};
 	pub use translation_mat;
+	#[allow(non_snake_case)]
 	pub mod Key {
 		pub use sdl2::keyboard::Keycode::*;
 	}
+	#[allow(non_snake_case)]
 	pub mod Scan {
 		pub use sdl2::keyboard::Scancode::*;
 	}
@@ -91,7 +93,8 @@ fn main() {
 	let mut ren = Render::new(&mut win, &mut context);
 	
 	let mut init_world = World::new(Camera::new(Vec3::new(0.0, 1.0, 0.0), 90.0));
-	init_world.entities.push(Entity::new(Vec3::new(0.0, 0.5815, -0.4340), Vec3::new(0.0, 0./*5*/, 0./*1*/), Mesh::new_triangle(1.0)));
+	init_world.entities.push(Entity::new(Vec3::new(-0.3, 0.6, 0.6), Vec3::new(0., 0./*5*/, 0./*1*/), Mesh::new_triangle(0.5)));
+	init_world.entities.push(Entity::new(Vec3::new( 0.3, 0.6, 0.6), Vec3::new(0., 0./*5*/, 0./*1*/), Mesh::new_square(0.5)));
 	let planes = Mesh::new_planes(10, 10, 10.0, 10.0, Vec3::new(1.0, 1.0, 1.0), Vec3::new(0.0, 0.0, 0.0));
 	init_world.entities.push(Entity::new_static(Vec3::new(0.0, 0.0, 0.0), planes));
 	
