@@ -8,7 +8,7 @@ pub enum EntityType {
 	Static,
 }
 
-#[derive(Clone)]
+#[derive(Copy, Clone)]
 pub struct Entity {
 	pos: Vec3,
 	vel: Vec3,
@@ -18,8 +18,49 @@ pub struct Entity {
 
 #[derive(Copy, Clone)]
 pub struct Portal {
-	pos: Vec3,
-	normal: Vec3,
+	pub pos: Vec3,
+	pub normal: Vec3,
+	tangent: Vec3,
+	mesh: Mesh,
+	outline_mesh: Mesh,
+	model_mat: Mat4,
+}
+impl Portal {
+	pub fn new(pos: Vec3, in_normal: Vec3, w: f32, h: f32) -> Portal {
+		let normal = in_normal.normalize();
+		let tangent = if normal == Vec3::new(0.0, 1.0, 0.0) {
+			Vec3::new(0.0, 0.0, 1.0)
+		} else {
+			Vec3::new(0.0, 1.0, 0.0)
+		};
+		let mesh = Mesh::new_rectangle(w, h, Vec3::new(1.0, 1.0, 1.0));
+		let outline_mesh = Mesh::new_rect_torus(w, h, 0.07);
+		
+		let model_mat = translation_mat(&pos) * get_rotation_between(Vec3::new(0.0, 0.0, -1.0), normal);
+		
+		Portal {
+			pos: pos,
+			normal: normal,
+			tangent: tangent,
+			mesh: mesh,
+			outline_mesh: outline_mesh,
+			model_mat: model_mat,
+		}
+	}
+	
+	pub fn get_model_mat(&self) -> Mat4 {
+		self.model_mat
+	}
+	
+	pub fn render(&self, r: &mut Render) {
+		let rotation = get_rotation_between(Vec3::new(0.0, 0.0, -1.0), self.normal);
+		self.mesh.render(r, translation_mat(&self.pos) * rotation);
+	}
+	
+	pub fn render_outline(&self, r: &mut Render) {
+		let rotation = get_rotation_between(Vec3::new(0.0, 0.0, -1.0), self.normal);
+		self.outline_mesh.render(r, translation_mat(&self.pos) * rotation);
+	}
 }
 
 impl Entity {
@@ -43,7 +84,7 @@ impl Entity {
 	}
 }
 
-#[derive(Clone, Copy)]
+#[derive(Copy, Clone)]
 pub struct Camera {
 	pos: Vec3,
 	xrot: f32,
@@ -63,6 +104,23 @@ impl Camera {
 		};
 		cam.update_view();
 		cam
+	}
+	
+	pub fn transform_through_portal(&mut self, p_in: &Portal, p_out: &Portal) {
+		self.pos = self.pos - p_in.pos;
+		let rot = get_rotation_between(p_in.normal, p_out.normal);
+		self.pos = FromHomogeneous::from(&(self.pos.to_homogeneous() * rot));
+		self.pos = self.pos + p_out.pos;
+		
+		self.view = Rot3::new(Vec3::new(-self.yrot, 0.0, 0.0)).to_homogeneous();
+		self.view = self.view * Rot3::new(Vec3::new(0.0, self.xrot, 0.0)).to_homogeneous();
+		self.view = self.view * rot;
+		/*self.view = self.view * get_rotation_between(p_in.normal, -p_out.normal);
+		match rot.inv() {
+			Some(m) => self.view = self.view * m,
+			None => {},
+		}*/
+		self.view = self.view * translation_mat(&-self.pos);	
 	}
 	
 	pub fn rotate(&mut self, x: f32, y: f32) {

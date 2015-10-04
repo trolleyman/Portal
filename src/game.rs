@@ -52,6 +52,9 @@ impl Game {
 						Some(Key::Escape) => {
 							self.toggle_paused();
 						},
+						Some(Key::F7) => {
+							ren.toggle_wireframes();
+						},
 						_ => {}
 					}
 					if !self.paused {

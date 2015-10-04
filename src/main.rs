@@ -1,5 +1,6 @@
 extern crate ncollide as nc;
 extern crate nalgebra as na;
+//extern crate rand;
 extern crate sdl2;
 extern crate gl;
 
@@ -11,7 +12,7 @@ pub mod render;
 use render::{Render, Mesh};
 use world::World;
 use game::Game;
-use entity::{Entity, Camera};
+use entity::{Entity, Camera, Portal};
 
 use sdl2::Sdl;
 use sdl2::keyboard::KeyboardState;
@@ -20,10 +21,10 @@ pub type DT = f32;
 
 pub mod prelude {
 	pub use na::{
-		Absolute, Cast, Col, Cross, Dot, Eye, FromHomogeneous, PntAsVec, Rotate, Rotation, Row,
+		Absolute, Cast, Col, Cross, Det, Dot, Eye, FromHomogeneous, Inv, Norm, PntAsVec, Rotate, Rotation, Row,
 		ToHomogeneous, RotationTo, Transform, Transformation, Translate, Translation,
 	};
-	pub use translation_mat;
+	pub use {translation_mat, get_rotation_between};
 	#[allow(non_snake_case)]
 	pub mod Key {
 		pub use sdl2::keyboard::Keycode::*;
@@ -59,6 +60,23 @@ pub fn translation_mat(t: &Vec3) -> Mat4 {
 	          0.0, 0.0, 0.0, 1.0)
 }
 
+pub fn get_rotation_between(mut a: Vec3, mut b: Vec3) -> Mat4 {
+	use na::{Norm, Cross, Dot, ToHomogeneous};
+	
+	a = a.normalize();
+	b = b.normalize();
+	
+	let u = a.cross(&b); // axis
+	let cos = a.dot(&b); // cos(angle)
+	let ncos = 1.0 - cos;
+	let sin = a.norm(); // sin(angle)
+	
+	// Taken from wikipedia
+	Mat3::new(cos + u.x*u.x*ncos, u.x*u.y*ncos - u.z*sin, u.x*u.z*ncos + u.y*sin,
+	          u.y*u.z*ncos + u.z*sin, cos + u.y*u.y*ncos, u.y*u.z*ncos - u.z*sin,
+	          u.z*u.x*ncos - u.y*sin, u.z*u.y*ncos + u.x*sin, cos + u.z*u.z*ncos).to_homogeneous()
+}
+
 fn main() {
 	let sdl = match sdl2::init() {
 		Ok(sdl) => sdl,
@@ -68,6 +86,8 @@ fn main() {
 		Ok(sub) => sub,
 		Err(s)  => panic!("sdl video subsystem init error: {}", &s)
 	};
+	let gl_attr = video.gl_attr();
+	gl_attr.set_stencil_size(8);
 	
 	let mut timer = match sdl.timer() {
 		Ok(sub) => sub,
@@ -97,6 +117,10 @@ fn main() {
 	init_world.entities.push(Entity::new(Vec3::new( 0.3, 0.6, 0.6), Vec3::new(0., 0./*5*/, 0./*1*/), Mesh::new_square(0.5)));
 	let planes = Mesh::new_planes(10, 10, 10.0, 10.0, Vec3::new(1.0, 1.0, 1.0), Vec3::new(0.0, 0.0, 0.0));
 	init_world.entities.push(Entity::new_static(Vec3::new(0.0, 0.0, 0.0), planes));
+	init_world.set_portals(
+		Portal::new(Vec3::new(0.0, 1.0, 4.0), Vec3::new(0.0, 0.0, -1.0), 0.9, 1.4),
+		Portal::new(Vec3::new(-1.5, 1.0, 2.5), Vec3::new(1.0, 0.0, 0.0), 0.9, 1.4)
+	);
 	
 	let mut game = Game::new(init_world, sdl.mouse());
 	main_loop(&sdl, &mut timer, &mut pump, &mut game, &mut ren);

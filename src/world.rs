@@ -4,6 +4,8 @@ use entity::{Entity, Camera, Portal};
 use sdl2::keyboard::{KeyboardState, Keycode, Mod};
 use render::Render;
 
+use gl;
+
 #[derive(Clone)]
 pub struct World {
 	/// The camera information
@@ -60,9 +62,67 @@ impl World {
 	}
 	
 	pub fn render(&self, ren: &mut Render) {
-		ren.set_camera(&self.camera);
+		self.render_from_camera(ren, &self.camera);
+		
+		match self.portals {
+			Some((p1, p2)) => {
+				let mut p1_transformed_cam = self.camera.clone();
+				p1_transformed_cam.transform_through_portal(&p1, &p2);
+				let mut p2_transformed_cam = self.camera.clone();
+				p2_transformed_cam.transform_through_portal(&p2, &p1);
+				
+				unsafe {
+					// Write stencil
+					gl::Enable(gl::STENCIL_TEST);
+					gl::StencilMask(0xFF);
+					gl::ClearStencil(0);
+					gl::Clear(gl::STENCIL_BUFFER_BIT);
+					
+					gl::StencilFunc(gl::ALWAYS, 1, 0xFF);
+					gl::StencilOp(gl::KEEP, gl::KEEP, gl::REPLACE);
+					gl::ColorMask(gl::FALSE, gl::FALSE, gl::FALSE, gl::FALSE);
+					gl::DepthMask(gl::FALSE);
+					
+					p1.render(ren);
+					
+					gl::StencilFunc(gl::ALWAYS, 2, 0xFF);
+					p2.render(ren);
+					
+					// Read stencil
+					gl::StencilMask(0x00);
+					gl::StencilOp(gl::KEEP, gl::KEEP, gl::KEEP);
+					gl::ColorMask(gl::TRUE, gl::TRUE, gl::TRUE, gl::TRUE);
+					gl::DepthMask(gl::TRUE);
+					
+					gl::StencilFunc(gl::GREATER, 0x0, 0xFF);
+					p1.render(ren);
+					p2.render(ren);
+					gl::Clear(gl::DEPTH_BUFFER_BIT);
+					
+					gl::StencilFunc(gl::EQUAL, 0x1, 0xFF);
+					self.render_from_camera(ren, &p1_transformed_cam);
+					
+					gl::StencilFunc(gl::EQUAL, 0x2, 0xFF);
+					self.render_from_camera(ren, &p2_transformed_cam);
+					
+					gl::Disable(gl::STENCIL_TEST);
+				}
+			},
+			None => {},
+		}
+		
+	}
+	fn render_from_camera(&self, ren: &mut Render, cam: &Camera) {
+		ren.set_camera(cam);
 		for ent in self.entities.iter() {
 			ent.render(ren);
+		}
+		match self.portals {
+			Some((p1, p2)) => {
+				p1.render_outline(ren);
+				p2.render_outline(ren);
+			},
+			None => {}
 		}
 	}
 	

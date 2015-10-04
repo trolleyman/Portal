@@ -6,6 +6,7 @@ authors = ["trolleyman <cgtrolley@gmail.com>"]
 [dependencies]
 nalgebra = "*"
 ncollide = "*"
+#rand = "*"
 
 #[dependencies.nalgebra]
 #git = "https://github.com/sebcrozet/nalgebra"

@@ -10,6 +10,7 @@ use std::ptr::null;
 use std::ffi::CString;
 
 use na;
+//use rand::{Rand, XorShiftRng, SeedableRng, Rng};
 
 use sdl2::video::{GLContext, Window};
 
@@ -24,6 +25,8 @@ pub struct Render<'a> {
 	pub main_shader: Shader,
 	pub vp_mat: Mat4,
 	pub m_mat: Mat4,
+	// arrow_mesh: Mesh,
+	view_wireframes: bool,
 }
 
 impl<'a> Render<'a> {
@@ -38,10 +41,13 @@ impl<'a> Render<'a> {
 				},
 			vp_mat: Mat4::new_identity(4),
 			m_mat: Mat4::new_identity(4),
+			view_wireframes: false,
 		};
 		unsafe {
-			gl::Enable(gl::CULL_FACE);
+			// gl::Enable(gl::CULL_FACE);
 			gl::Enable(gl::DEPTH_TEST);
+			// gl::Enable(gl::LINE_SMOOTH);
+			// gl::LineWidth(1.0);
 			gl::DepthFunc(gl::LESS);
 		}
 		ren.win.subsystem().gl_set_swap_interval(1);
@@ -56,6 +62,16 @@ impl<'a> Render<'a> {
 			gl::ClearColor(0.0, 0.0, 0.3, 1.0);
 			gl::Clear(gl::COLOR_BUFFER_BIT);
 			gl::Clear(gl::DEPTH_BUFFER_BIT);
+			
+			if self.view_wireframes {
+				gl::PolygonMode(gl::FRONT_AND_BACK, gl::LINE);
+				gl::Disable(gl::DEPTH_TEST);
+				gl::Disable(gl::CULL_FACE);
+			} else {
+				gl::PolygonMode(gl::FRONT_AND_BACK, gl::FILL);
+				gl::Enable(gl::DEPTH_TEST);
+				gl::Enable(gl::CULL_FACE);
+			}
 		}
 	}
 	
@@ -72,12 +88,22 @@ impl<'a> Render<'a> {
 		self.main_shader.set_mvp(self.vp_mat * self.m_mat);
 	}
 	
+	pub fn get_drawable_size(&self) -> (u32, u32) {
+		self.win.drawable_size()
+	}
 	pub fn update_size(&mut self) {
 		let (w, h) = self.win.drawable_size();
 		unsafe {
 			gl::Viewport(0, 0, w as i32, h as i32);
 		}
 	}
+	pub fn toggle_wireframes(&mut self) {
+		self.view_wireframes = !self.view_wireframes;
+	}
+	
+	// pub fn render_arrow(pos: Vec3, vec: Vec3) {
+	// 	arrow_mesh.render()
+	// }
 }
 
 pub struct Shader {
@@ -239,6 +265,7 @@ impl MeshBuilder {
 #[derive(Debug, Copy, Clone)]
 pub struct Mesh {
 	vao: GLuint,
+	vert_len: GLsizei,
 	len: GLsizei,
 	indices: Option<GLuint>,
 	verts: GLuint,
@@ -294,6 +321,7 @@ impl Mesh {
 			
 			Mesh {
 				vao: vao,
+				vert_len: verts.len() as GLsizei,
 				len: verts.len() as GLsizei,
 				indices: None,
 				verts: vbo[0],
@@ -301,18 +329,170 @@ impl Mesh {
 			}
 		}
 	}
-	/*
-	pub fn new_rectangle(w: f32, h: f32, normal: Vec3, tangent: Vec3) -> Mesh {
-		let planeY = normal.normalize()
+	
+	pub fn new_rect_torus(w: f32, h: f32, d: f32) -> Mesh {
+		/*let plane_x = normal.cross(&tangent).normalize();
+		let x = plane_x * w;
+		let out_x = x + plane_x * d;
+		let plane_y = normal.cross(&plane_x).normalize();
+		let y = plane_y * h;
+		let out_y = y + plane_y * d;
+		let plane_z = normal.normalize();
+		let z = plane_z * d;*/
+		let plane_x = Vec3::new(1.0, 0.0, 0.0);
+		let x = plane_x * (w / 2.0);
+		let out_x = x + plane_x * d;
+		let plane_y = Vec3::new(0.0, 1.0, 0.0);
+		let y = plane_y * (h / 2.0);
+		let out_y = y + plane_y * d;
+		let plane_z = Vec3::new(0.0, 0.0, -1.0);
+		let z = plane_z * d;
+		
+		// -Z plane
+		// 0  1----4  5
+		// 2  3    6  7
+		// |          |
+		// |          |
+		// 8  9   12 13
+		// 10 11--14 15
+		//
+		// 0,5,7,2 - 0,1,11,10 - 4,5,15,14 - 8,13,15,10
+		//
+		// +Z plane
+		// 16 17--20 21
+		// 18 19  22 23
+		// |          |
+		// |          |
+		// 24 25  28 29
+		// 26 27--30 31
+		// 
+		// 16,18,23,21 - 16,26,27,17 - 24,26,31,29 - 20,30,31,21
+		//
+		// Sides   - lurd - 16,0,10,26 - 16,21,5,0 - 21,31,15,5 - 31,26,10,15
+		// Insides - lurd - 19,25,9,3 - 22,19,3,6 - 28,22,6,12 - 25,28,12,19
+		
+		let color: [Vec3; 32] = [Vec3::new(1.0,1.0,1.0); 32];
+		/*let mut rng = XorShiftRng::from_seed([666, 14124, 15775644, 194912]);
+		for i in 0..32 {
+			color[i] = Vec3::new(Rand::rand(&mut rng), Rand::rand(&mut rng), Rand::rand(&mut rng));
+		}*/
 		
 		Mesh::indexed(&[
+				*(- out_x + out_y - z).as_pnt(), // 0
+				*(-     x + out_y - z).as_pnt(),
+				*(- out_x +     y - z).as_pnt(),
+				*(-     x +     y - z).as_pnt(),
 				
+				*(      x + out_y - z).as_pnt(), // 4
+				*(  out_x + out_y - z).as_pnt(),
+				*(      x +     y - z).as_pnt(),
+				*(  out_x +     y - z).as_pnt(),
+				
+				*(- out_x -     y - z).as_pnt(), // 8
+				*(-     x -     y - z).as_pnt(),
+				*(- out_x - out_y - z).as_pnt(),
+				*(-     x - out_y - z).as_pnt(),
+				
+				*(      x -     y - z).as_pnt(), // 12
+				*(  out_x -     y - z).as_pnt(),
+				*(      x - out_y - z).as_pnt(),
+				*(  out_x - out_y - z).as_pnt(),
+				
+				*(- out_x + out_y + z).as_pnt(), // 16
+				*(-     x + out_y + z).as_pnt(),
+				*(- out_x +     y + z).as_pnt(),
+				*(-     x +     y + z).as_pnt(),
+				
+				*(      x + out_y + z).as_pnt(), // 20
+				*(  out_x + out_y + z).as_pnt(),
+				*(      x +     y + z).as_pnt(),
+				*(  out_x +     y + z).as_pnt(),
+				
+				*(- out_x -     y + z).as_pnt(), // 24
+				*(-     x -     y + z).as_pnt(),
+				*(- out_x - out_y + z).as_pnt(),
+				*(-     x - out_y + z).as_pnt(),
+				
+				*(      x -     y + z).as_pnt(), // 28
+				*(  out_x -     y + z).as_pnt(),
+				*(      x - out_y + z).as_pnt(),
+				*(  out_x - out_y + z).as_pnt(),
 			], &[
+				// Bottom
+					na::Vec3::new(0, 7, 5),
+					na::Vec3::new(7, 0, 2),
+					
+					na::Vec3::new(0, 11, 1),
+					na::Vec3::new(11, 0, 10),
+					
+					na::Vec3::new(4, 15, 5),
+					na::Vec3::new(15, 4, 14),
+					
+					na::Vec3::new(8, 15, 13),
+					na::Vec3::new(15, 8, 10),
 				
+				// Top
+					na::Vec3::new(16, 23, 18),
+					na::Vec3::new(23, 16, 21),
+					
+					na::Vec3::new(16, 27, 26),
+					na::Vec3::new(27, 16, 17),
+					
+					na::Vec3::new(24, 31, 26),
+					na::Vec3::new(31, 24, 29),
+					
+					na::Vec3::new(20, 31, 30),
+					na::Vec3::new(31, 20, 21),
+				
+				// Sides
+					na::Vec3::new(16, 10, 0),
+					na::Vec3::new(10, 16, 26),
+					
+					na::Vec3::new(16, 5, 21),
+					na::Vec3::new(5, 16, 0),
+					
+					na::Vec3::new(21, 15, 31),
+					na::Vec3::new(15, 21, 5),
+					
+					na::Vec3::new(31, 10, 26),
+					na::Vec3::new(10, 31, 15),
+					
+				// Insides
+					na::Vec3::new(19, 9, 25),
+					na::Vec3::new(9, 19, 3),
+					
+					na::Vec3::new(22, 3, 19),
+					na::Vec3::new(3, 22, 6),
+					
+					na::Vec3::new(28, 6, 22),
+					na::Vec3::new(6, 28, 12),
+					
+					na::Vec3::new(25, 12, 28),
+					na::Vec3::new(12, 25, 9),
+				
+			], &color)
+	}
+	pub fn new_rectangle(w: f32, h: f32, color: Vec3) -> Mesh {
+		//let plane_x = normal.cross(&tangent).normalize() * w;
+		//let plane_y = normal.cross(&plane_x).normalize() * h;
+		let plane_x = Vec3::new(w / 2.0, 0.0, 0.0);
+		let plane_y = Vec3::new(0.0, h / 2.0, 0.0);
+		
+		Mesh::indexed(&[
+				*(- plane_x + plane_y).as_pnt(),
+				*(- plane_x - plane_y).as_pnt(),
+				*(  plane_x - plane_y).as_pnt(),
+				*(  plane_x + plane_y).as_pnt(),
 			], &[
-				
+				na::Vec3::new(0, 2, 1),
+				na::Vec3::new(0, 3, 2),
+			], &[
+				color,
+				color,
+				color,
+				color,
 			])
-	}*/
+	}
 	pub fn new_triangle(scale: f32) -> Mesh {
 		Mesh::indexed(&[
 			Pnt3::new(-0.5,  0.0, 0.0) * scale,
@@ -378,7 +558,10 @@ impl Mesh {
 			gl::BindVertexArray(self.vao);
 			
 			match self.indices {
-				Some(_) => gl::DrawElements(gl::TRIANGLES, self.len, gl::UNSIGNED_SHORT, null()),
+				Some(_) => {
+					//gl::DrawArrays(gl::POINTS, 0, self.vert_len);
+					gl::DrawElements(gl::TRIANGLES, self.len, gl::UNSIGNED_SHORT, null());
+				},
 				None => gl::DrawArrays(gl::TRIANGLES, 0, self.len),
 			}
 		}
