@@ -8,6 +8,7 @@ use std::ops::Drop;
 use std::mem;
 use std::ptr::null;
 use std::ffi::CString;
+use std::ffi::CStr;
 
 use na;
 //use rand::{Rand, XorShiftRng, SeedableRng, Rng};
@@ -23,6 +24,7 @@ pub struct Render<'a> {
 	pub win: &'a mut Window,
 	pub gl_context: &'a mut GLContext,
 	pub main_shader: Shader,
+	pub solid_color_shader: Shader,
 	pub vp_mat: Mat4,
 	pub m_mat: Mat4,
 	// arrow_mesh: Mesh,
@@ -36,9 +38,13 @@ impl<'a> Render<'a> {
 			win: win,
 			gl_context: context,
 			main_shader: match Shader::from_files("shaders/main.vs", "shaders/main.fs") {
-					Ok(s) => s,
-					Err(e) => panic!("{}", e),
+				Ok(s) => s,
+				Err(e) => panic!("{}", e),
 				},
+			solid_color_shader: match Shader::from_files("shaders/solid_color.vs", "shaders/solid_color.fs") {
+				Ok(s) => s,
+				Err(e) => panic!("{}", e),
+			},
 			vp_mat: Mat4::new_identity(4),
 			m_mat: Mat4::new_identity(4),
 			view_wireframes: false,
@@ -59,9 +65,17 @@ impl<'a> Render<'a> {
 		self.win.show();
 		self.win.gl_swap_window();
 		unsafe {
-			gl::ClearColor(0.0, 0.0, 0.3, 1.0);
-			gl::Clear(gl::COLOR_BUFFER_BIT);
-			gl::Clear(gl::DEPTH_BUFFER_BIT);
+			let x = Render::get_background_color();
+			let r = x[0]; let g = x[1]; let b = x[2]; let a = x[3];
+			gl::ClearColor(r, g, b, a);
+			gl::ClearStencil(0);
+			gl::Enable(gl::STENCIL_TEST);
+			gl::StencilMask(0xFF);
+			gl::ColorMask(gl::TRUE, gl::TRUE, gl::TRUE, gl::TRUE);
+			gl::DepthMask(gl::TRUE);
+			gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT | gl::STENCIL_BUFFER_BIT);
+			gl::StencilMask(0x00);
+			gl::Disable(gl::STENCIL_TEST);
 			
 			if self.view_wireframes {
 				gl::PolygonMode(gl::FRONT_AND_BACK, gl::LINE);
@@ -83,9 +97,9 @@ impl<'a> Render<'a> {
 		self.vp_mat = projection * view;
 	}
 	
-	pub fn set_model_mat(&mut self, mat: Mat4) {
+	pub fn set_model_mat(&mut self, s: &Shader, mat: Mat4) {
 		self.m_mat = mat;
-		self.main_shader.set_mvp(self.vp_mat * self.m_mat);
+		s.set_mvp(self.vp_mat * self.m_mat);
 	}
 	
 	pub fn get_drawable_size(&self) -> (u32, u32) {
@@ -101,6 +115,10 @@ impl<'a> Render<'a> {
 		self.view_wireframes = !self.view_wireframes;
 	}
 	
+	pub fn get_background_color() -> Vec4 {
+		Vec4::new(0.0, 0.0, 0.3, 1.0)
+	}
+	
 	// pub fn render_arrow(pos: Vec3, vec: Vec3) {
 	// 	arrow_mesh.render()
 	// }
@@ -111,6 +129,7 @@ pub struct Shader {
 	vs: GLuint,
 	fs: GLuint,
 	mvp_pos: GLint,
+	owned: bool,
 }
 
 impl Shader {
@@ -176,6 +195,7 @@ impl Shader {
 				vs: vs,
 				fs: fs,
 				mvp_pos: gl::GetUniformLocation(prog, CString::new("in_mvp").unwrap().as_ptr()),
+				owned: true,
 			})
 		}
 	}
@@ -210,18 +230,39 @@ impl Shader {
 	
 	pub fn set_mvp(&self, mvp: Mat4) {
 		unsafe {
+			gl::UseProgram(self.prog);
 			gl::UniformMatrix4fv(self.mvp_pos, 1, gl::FALSE, &mvp.as_array()[0][0] as *const GLfloat);
+		}
+	}
+	
+	pub fn set_uniform_4f(&self, name: &CStr, data: &[f32; 4]) {
+		unsafe {
+			let loc = gl::GetUniformLocation(self.prog, name.as_ptr());
+			if loc != 0 {
+				gl::UseProgram(self.prog);
+				gl::Uniform4f(loc, data[0] as GLfloat, data[1] as GLfloat, data[2] as GLfloat, data[3] as GLfloat);
+			}
 		}
 	}
 }
 impl Drop for Shader {
 	fn drop(&mut self) {
 		unsafe {
-			gl::DetachShader(self.prog, self.vs);
-			gl::DetachShader(self.prog, self.fs);
-			gl::DeleteProgram(self.prog);
-			gl::DeleteShader(self.vs);
-			gl::DeleteShader(self.fs);
+			if self.owned {
+				gl::DetachShader(self.prog, self.vs);
+				gl::DetachShader(self.prog, self.fs);
+				gl::DeleteProgram(self.prog);
+				gl::DeleteShader(self.vs);
+				gl::DeleteShader(self.fs);
+			}
+		}
+	}
+}
+impl Clone for Shader {
+	fn clone(&self) -> Shader {
+		Shader {
+			owned: false,
+			..*self
 		}
 	}
 }
@@ -493,6 +534,29 @@ impl Mesh {
 				color,
 			])
 	}
+	pub fn new_rectangle_double(w: f32, h: f32, color: Vec3) -> Mesh {
+		//let plane_x = normal.cross(&tangent).normalize() * w;
+		//let plane_y = normal.cross(&plane_x).normalize() * h;
+		let plane_x = Vec3::new(w / 2.0, 0.0, 0.0);
+		let plane_y = Vec3::new(0.0, h / 2.0, 0.0);
+		
+		Mesh::indexed(&[
+				*(- plane_x + plane_y).as_pnt(),
+				*(- plane_x - plane_y).as_pnt(),
+				*(  plane_x - plane_y).as_pnt(),
+				*(  plane_x + plane_y).as_pnt(),
+			], &[
+				na::Vec3::new(0, 2, 1),
+				na::Vec3::new(0, 3, 2),
+				na::Vec3::new(0, 1, 2),
+				na::Vec3::new(0, 2, 3),
+			], &[
+				color,
+				color,
+				color,
+				color,
+			])
+	}
 	pub fn new_triangle(scale: f32) -> Mesh {
 		Mesh::indexed(&[
 			Pnt3::new(-0.5,  0.0, 0.0) * scale,
@@ -552,8 +616,45 @@ impl Mesh {
 	
 	pub fn render(&self, ren: &mut Render, model_mat: Mat4) {
 		unsafe {
-			ren.set_model_mat(model_mat);
 			ren.main_shader.use_prog();
+			{
+				let s = ren.main_shader.clone();
+				ren.set_model_mat(&s, model_mat);
+			}
+			
+			gl::BindVertexArray(self.vao);
+			
+			match self.indices {
+				Some(_) => {
+					//gl::DrawArrays(gl::POINTS, 0, self.vert_len);
+					gl::DrawElements(gl::TRIANGLES, self.len, gl::UNSIGNED_SHORT, null());
+				},
+				None => gl::DrawArrays(gl::TRIANGLES, 0, self.len),
+			}
+		}
+	}
+	
+	pub fn draw(&self) {
+		unsafe {
+			gl::BindVertexArray(self.vao);
+			
+			match self.indices {
+				Some(_) => {
+					//gl::DrawArrays(gl::POINTS, 0, self.vert_len);
+					gl::DrawElements(gl::TRIANGLES, self.len, gl::UNSIGNED_SHORT, null());
+				},
+				None => gl::DrawArrays(gl::TRIANGLES, 0, self.len),
+			}
+		}
+	}
+	pub fn render_color(&self, ren: &mut Render, model_mat: Mat4, color: &[f32; 4]) {
+		unsafe {
+			{
+				let shdr = ren.solid_color_shader.clone();
+				ren.set_model_mat(&shdr, model_mat);
+			}
+			ren.solid_color_shader.use_prog();
+			ren.solid_color_shader.set_uniform_4f(CStr::from_ptr(mem::transmute("in_color\0".as_ptr())), &color);
 			
 			gl::BindVertexArray(self.vao);
 			

@@ -33,7 +33,7 @@ impl Portal {
 		} else {
 			Vec3::new(0.0, 1.0, 0.0)
 		};
-		let mesh = Mesh::new_rectangle(w, h, Vec3::new(1.0, 1.0, 1.0));
+		let mesh = Mesh::new_rectangle_double(w, h, Vec3::new(1.0, 1.0, 1.0));
 		let outline_mesh = Mesh::new_rect_torus(w, h, 0.07);
 		
 		let model_mat = translation_mat(&pos) * get_rotation_between(Vec3::new(0.0, 0.0, -1.0), normal);
@@ -55,6 +55,10 @@ impl Portal {
 	pub fn render(&self, r: &mut Render) {
 		let rotation = get_rotation_between(Vec3::new(0.0, 0.0, -1.0), self.normal);
 		self.mesh.render(r, translation_mat(&self.pos) * rotation);
+	}
+	pub fn render_color(&self, r: &mut Render, color: &[f32; 4]) {
+		let rotation = get_rotation_between(Vec3::new(0.0, 0.0, -1.0), self.normal);
+		self.mesh.render_color(r, translation_mat(&self.pos) * rotation, color);
 	}
 	
 	pub fn render_outline(&self, r: &mut Render) {
@@ -106,7 +110,17 @@ impl Camera {
 		cam
 	}
 	
-	pub fn transform_through_portal(&mut self, p_in: &Portal, p_out: &Portal) {
+	pub fn transform_through_portal(&mut self, mut p_in: Portal, mut p_out: Portal) {
+		let mut cam_n = Vec3::new(0.0, 0.0, 1.0);
+		cam_n = Rot3::new_with_euler_angles(0.0, self.xrot, 0.0).rotate(&cam_n);
+		cam_n = Rot3::new_with_euler_angles(-self.yrot, 0.0, 0.0).rotate(&cam_n);
+		
+		if p_in.normal.dot(&cam_n) > 0.0 {
+			// Invert
+			p_in.normal = -p_in.normal;
+			p_out.normal = -p_out.normal;
+		}
+		
 		self.pos = self.pos - p_in.pos;
 		let rot = get_rotation_between(p_in.normal, p_out.normal);
 		self.pos = FromHomogeneous::from(&(self.pos.to_homogeneous() * rot));

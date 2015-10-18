@@ -62,58 +62,81 @@ impl World {
 	}
 	
 	pub fn render(&self, ren: &mut Render) {
-		self.render_from_camera(ren, &self.camera);
+		ren.set_camera(&self.camera);
 		
 		match self.portals {
 			Some((p1, p2)) => {
 				let mut p1_transformed_cam = self.camera.clone();
-				p1_transformed_cam.transform_through_portal(&p1, &p2);
+				p1_transformed_cam.transform_through_portal(p1, p2);
 				let mut p2_transformed_cam = self.camera.clone();
-				p2_transformed_cam.transform_through_portal(&p2, &p1);
+				p2_transformed_cam.transform_through_portal(p2, p1);
 				
 				unsafe {
-					// Write stencil
 					gl::Enable(gl::STENCIL_TEST);
-					gl::StencilMask(0xFF);
-					gl::ClearStencil(0);
-					gl::Clear(gl::STENCIL_BUFFER_BIT);
 					
-					gl::StencilFunc(gl::ALWAYS, 1, 0xFF);
-					gl::StencilOp(gl::KEEP, gl::KEEP, gl::REPLACE);
+					// 2. Draw portal 1 in the depth buffer
+					gl::StencilMask(0x00);
 					gl::ColorMask(gl::FALSE, gl::FALSE, gl::FALSE, gl::FALSE);
-					gl::DepthMask(gl::FALSE);
-					
+					gl::DepthMask(gl::TRUE);
 					p1.render(ren);
-					
+					// 3. Draw portal 2 in the stencil buffer with 2s
+					gl::StencilMask(0xFF);
 					gl::StencilFunc(gl::ALWAYS, 2, 0xFF);
+					gl::StencilOp(gl::KEEP, gl::KEEP, gl::REPLACE);
+					gl::DepthMask(gl::FALSE);
 					p2.render(ren);
 					
-					// Read stencil
+					// 4. Clear the depth buffer
 					gl::StencilMask(0x00);
+					gl::DepthMask(gl::TRUE);
+					gl::Clear(gl::DEPTH_BUFFER_BIT);
+					
+					// 5. Draw portal 2 in the depth buffer
+					gl::ColorMask(gl::FALSE, gl::FALSE, gl::FALSE, gl::FALSE);
+					gl::DepthMask(gl::TRUE);
+					p2.render(ren);
+					// 6. Draw portal 1 in the stencil buffer with 1s
+					gl::StencilMask(0xFF);
+					gl::StencilFunc(gl::ALWAYS, 1, 0xFF);
+					gl::DepthMask(gl::FALSE);
+					p1.render(ren);
+					
+					// 7. Clear the Depth Buffer
+					gl::StencilMask(0x00);
+					gl::DepthMask(gl::TRUE);
+					gl::Clear(gl::DEPTH_BUFFER_BIT);
+					
+					//  8. Draw scene through portal 1 in the 1s
+					gl::StencilFunc(gl::EQUAL, 0x1, 0xFF);
 					gl::StencilOp(gl::KEEP, gl::KEEP, gl::KEEP);
 					gl::ColorMask(gl::TRUE, gl::TRUE, gl::TRUE, gl::TRUE);
 					gl::DepthMask(gl::TRUE);
-					
-					gl::StencilFunc(gl::GREATER, 0x0, 0xFF);
-					p1.render(ren);
-					p2.render(ren);
-					gl::Clear(gl::DEPTH_BUFFER_BIT);
-					
-					gl::StencilFunc(gl::EQUAL, 0x1, 0xFF);
 					self.render_from_camera(ren, &p1_transformed_cam);
 					
+					//  9 Draw scene through portal 2 in the 2s
 					gl::StencilFunc(gl::EQUAL, 0x2, 0xFF);
 					self.render_from_camera(ren, &p2_transformed_cam);
 					
+					// 10. Draw portal 1 in the depth buffer to protect portal 1
+					gl::StencilFunc(gl::ALWAYS, 0x00, 0xFF);
+					gl::ColorMask(gl::FALSE, gl::FALSE, gl::FALSE, gl::FALSE);
+					p1.render(ren);
+					
+					// 11. Draw portal 2 in the depth buffer to protect portal 2
+					p2.render(ren);
+					
+					// 12. Draw main scene
 					gl::Disable(gl::STENCIL_TEST);
+					gl::ColorMask(gl::TRUE, gl::TRUE, gl::TRUE, gl::TRUE);
+					self.render_from_camera(ren, &self.camera);
 				}
 			},
 			None => {},
 		}
-		
 	}
 	fn render_from_camera(&self, ren: &mut Render, cam: &Camera) {
 		ren.set_camera(cam);
+		
 		for ent in self.entities.iter() {
 			ent.render(ren);
 		}
@@ -124,6 +147,8 @@ impl World {
 			},
 			None => {}
 		}
+		
+		ren.set_camera(&self.camera);
 	}
 	
 	pub fn handle_keydown(&mut self, key: &Keycode, keymod: &Mod, repeat: bool) {
