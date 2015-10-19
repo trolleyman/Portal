@@ -42,22 +42,22 @@ impl World {
 		let dp = speed * dt;
 		let rot = Rot3::new(Vec3::new(0.0, -self.camera.get_xrot(), 0.0));
 		if state.is_scancode_pressed(Scan::W) {
-			self.camera.translate(rot.rotate(&Vec3::new(0.0, 0.0,  dp)));
+			self.camera.translate(rot.rotate(&Vec3::new(0.0, 0.0,  dp)), &self.portals.clone());
 		}
 		if state.is_scancode_pressed(Scan::S) {
-			self.camera.translate(rot.rotate(&Vec3::new(0.0, 0.0, -dp)));
+			self.camera.translate(rot.rotate(&Vec3::new(0.0, 0.0, -dp)), &self.portals.clone());
 		}
 		if state.is_scancode_pressed(Scan::A) {
-			self.camera.translate(rot.rotate(&Vec3::new( dp, 0.0, 0.0)));
+			self.camera.translate(rot.rotate(&Vec3::new( dp, 0.0, 0.0)), &self.portals.clone());
 		}
 		if state.is_scancode_pressed(Scan::D) {
-			self.camera.translate(rot.rotate(&Vec3::new(-dp, 0.0, 0.0)));
+			self.camera.translate(rot.rotate(&Vec3::new(-dp, 0.0, 0.0)), &self.portals.clone());
 		}
 		if state.is_scancode_pressed(Scan::Q) {
-			self.camera.translate(rot.rotate(&Vec3::new(0.0,  dp, 0.0)));
+			self.camera.translate(rot.rotate(&Vec3::new(0.0,  dp, 0.0)), &self.portals.clone());
 		}
 		if state.is_scancode_pressed(Scan::E) {
-			self.camera.translate(rot.rotate(&Vec3::new(0.0, -dp, 0.0)));
+			self.camera.translate(rot.rotate(&Vec3::new(0.0, -dp, 0.0)), &self.portals.clone());
 		}
 	}
 	

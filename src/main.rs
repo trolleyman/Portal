@@ -35,7 +35,7 @@ pub mod prelude {
 	}
 	
 	pub use DT;
-	pub use {Mat3, Mat4, Ortho3, Persp3, Pnt2, Pnt3, Quat, Rot2, Rot3, UnitQuat, Vec3, Vec4};
+	pub use {Mat3, Mat4, Ortho3, Persp3, Pnt2, Pnt3, Quat, Rot2, Rot3, UnitQuat, Vec2, Vec3, Vec4};
 	pub use {TriMesh};
 }
 pub type TriMesh = nc::shape::TriMesh<na::Pnt3<f32>>;
@@ -50,6 +50,7 @@ pub type Quat = na::Quat<f32>;
 pub type Rot2 = na::Rot2<f32>;
 pub type Rot3 = na::Rot3<f32>;
 pub type UnitQuat = na::UnitQuat<f32>;
+pub type Vec2 = na::Vec2<f32>;
 pub type Vec3 = na::Vec3<f32>;
 pub type Vec4 = na::Vec4<f32>;
 

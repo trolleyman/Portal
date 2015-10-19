@@ -1,6 +1,7 @@
 use prelude::*;
 
 use render::{Render, Mesh};
+use nc::ray::{Ray, RayIntersection};
 
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub enum EntityType {
@@ -24,6 +25,8 @@ pub struct Portal {
 	mesh: Mesh,
 	outline_mesh: Mesh,
 	model_mat: Mat4,
+	w: f32,
+	h: f32,
 }
 impl Portal {
 	pub fn new(pos: Vec3, in_normal: Vec3, w: f32, h: f32) -> Portal {
@@ -45,6 +48,8 @@ impl Portal {
 			mesh: mesh,
 			outline_mesh: outline_mesh,
 			model_mat: model_mat,
+			w: w,
+			h: h,
 		}
 	}
 	
@@ -64,6 +69,26 @@ impl Portal {
 	pub fn render_outline(&self, r: &mut Render) {
 		let rotation = get_rotation_between(Vec3::new(0.0, 0.0, -1.0), self.normal);
 		self.outline_mesh.render(r, translation_mat(&self.pos) * rotation);
+	}
+	
+	pub fn get_intersection(&self, ray: &Ray<Pnt3>) -> Option<RayIntersection<Vec3>> {
+		// a--b
+		// |  |
+		// c--d
+		let (w2, h2) = (Vec3::new(self.w / 2.0, 0.0, 0.0), Vec3::new(0.0, self.h / 2.0, 0.0));
+		let rotation = get_rotation_between(Vec3::new(0.0, 0.0, -1.0), self.normal);
+		let trans = self.pos;
+		let a = <Vec3 as FromHomogeneous<Vec4>>::from(&(rotation * (- w2 - h2).to_homogeneous())).to_pnt()+ trans;
+		let b = <Vec3 as FromHomogeneous<Vec4>>::from(&(rotation * (  w2 - h2).to_homogeneous())).to_pnt()+ trans;
+		let c = <Vec3 as FromHomogeneous<Vec4>>::from(&(rotation * (- w2 + h2).to_homogeneous())).to_pnt()+ trans;
+		let d = <Vec3 as FromHomogeneous<Vec4>>::from(&(rotation * (  w2 + h2).to_homogeneous())).to_pnt()+ trans;
+		match ::nc::ray::triangle_ray_intersection(&a, &d, &b, ray) {
+			Some((i, _)) => Some(i),
+			None => match ::nc::ray::triangle_ray_intersection(&a, &c, &d, ray) {
+				Some((i, _)) => Some(i),
+				None => None,
+			},
+		}
 	}
 }
 
@@ -163,8 +188,43 @@ impl Camera {
 		self.view = self.view * translation_mat(&-self.pos);
 	}
 	
-	pub fn translate(&mut self, mov: Vec3) {
-		self.pos = self.pos + mov;
+	// Returns true if the camera has been transformed through a portal.
+	fn translate_through_portal(&mut self, mov: Vec3, p_in: &Portal, p_out: &Portal) -> bool {
+		let mov_norm = mov.normalize();
+		let mov_len = mov.norm();
+		if let Some(ri) = p_in.get_intersection(&Ray::new(self.pos.to_pnt(), mov_norm)) {
+			if ri.toi <= mov_len {
+				// Intersection - translate intersection point to other portal + rotate
+				let rot = get_rotation_between(p_in.normal, p_out.normal);
+				let init_pos = self.pos;
+				self.pos = self.pos + mov;
+				self.pos = self.pos - p_in.pos;
+				self.pos = FromHomogeneous::from(&(self.pos.to_homogeneous() * rot));
+				self.pos = self.pos + p_out.pos;
+				
+				println!("###### Portal Teleportation ######");
+				println!("from: {:?}", init_pos);
+				println!("  to: {:?}", self.pos);
+				
+				// Get x-rotation between p_in.normal and p_out.normal
+				let (in_norm2d, out_norm2d) = (Vec2::new(p_in.normal.x, p_in.normal.z), Vec2::new(p_out.normal.x, p_out.normal.z));
+				let angle_between = out_norm2d.y.atan2(out_norm2d.x) - in_norm2d.y.atan2(in_norm2d.x);
+				println!("angle_between: {}", angle_between);
+				self.xrot -= angle_between;
+			}
+		}
+		false
+	}
+	
+	pub fn translate(&mut self, mov: Vec3, ps: &Option<(Portal, Portal)>) {
+		if let &Some((ref p1, ref p2)) = ps {
+			if !(self.translate_through_portal(mov, p1, p2) || self.translate_through_portal(mov, p2, p1)) {
+				self.pos = self.pos + mov;
+			}
+		} else {
+			self.pos = self.pos + mov;
+		}
+		
 		self.update_view()
 	}
 	
