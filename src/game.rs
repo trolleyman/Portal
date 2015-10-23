@@ -57,6 +57,9 @@ impl Game {
 						Some(Key::F7) => {
 							ren.toggle_wireframes();
 						},
+						Some(Key::F8) => {
+							ren.toggle_portal_rendering();
+						},
 						_ => {}
 					}
 					if !self.paused {

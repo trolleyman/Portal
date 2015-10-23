@@ -2,6 +2,7 @@ use prelude::*;
 
 use render::{Render, Mesh};
 use nc::ray::{Ray, RayIntersection};
+use na;
 
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub enum EntityType {
@@ -37,7 +38,7 @@ impl Portal {
 			Vec3::new(0.0, 1.0, 0.0)
 		};
 		
-		/*let d = 0.04;
+		let d = 0.04;
 		let w2 = w/2.0;
 		let h2 = h/2.0;
 		let d2 = d/2.0;
@@ -71,9 +72,9 @@ impl Portal {
 				Vec3::new(1.0, 1.0, 1.0),
 				Vec3::new(1.0, 1.0, 1.0),
 				Vec3::new(1.0, 1.0, 1.0),
-			]);*/
+			]);
 		
-		let mesh = Mesh::new_rectangle_double(w, h, Vec3::new(1.0, 1.0, 1.0));
+		//let mesh = Mesh::new_rectangle_double(w, h, Vec3::new(1.0, 1.0, 1.0));
 		let outline_mesh = Mesh::new_rect_torus(w, h, 0.07);
 		
 		let model_mat = translation_mat(&pos) * get_rotation_between(Vec3::new(0.0, 0.0, -1.0), normal);

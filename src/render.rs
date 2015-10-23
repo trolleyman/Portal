@@ -29,6 +29,7 @@ pub struct Render<'a> {
 	pub m_mat: Mat4,
 	// arrow_mesh: Mesh,
 	view_wireframes: bool,
+	render_portals: bool
 }
 
 impl<'a> Render<'a> {
@@ -48,6 +49,7 @@ impl<'a> Render<'a> {
 			vp_mat: Mat4::new_identity(4),
 			m_mat: Mat4::new_identity(4),
 			view_wireframes: false,
+			render_portals: true,
 		};
 		unsafe {
 			// gl::Enable(gl::CULL_FACE);
@@ -114,9 +116,30 @@ impl<'a> Render<'a> {
 	pub fn toggle_wireframes(&mut self) {
 		self.view_wireframes = !self.view_wireframes;
 	}
+	pub fn is_wireframe(&self) -> bool {
+		self.view_wireframes
+	}
+	
+	pub fn toggle_portal_rendering(&mut self) {
+		self.render_portals = !self.render_portals;
+	}
+	pub fn should_render_portals(&self) -> bool {
+		self.render_portals
+	}
 	
 	pub fn get_background_color() -> Vec4 {
 		Vec4::new(0.0, 0.0, 0.3, 1.0)
+	}
+	
+	pub fn print(&self) {
+		if !self.view_wireframes {
+			print!("NO_");
+		}
+		print!("WIREFRAME - ");
+		if !self.render_portals {
+			print!("NO_");
+		}
+		print!("RENDER_PORTALS");
 	}
 	
 	// pub fn render_arrow(pos: Vec3, vec: Vec3) {

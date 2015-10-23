@@ -150,8 +150,12 @@ fn main_loop(sdl: &Sdl, timer: &mut sdl2::TimerSubsystem, pump: &mut sdl2::Event
 			total += dur;
 		}
 		
-		print!("fps:{: >3}, total: {: >7.3}s, dt: {: >.3}s --- ", game.get_fps(), (total as f64) / 1_000.0, dt);
+		print!("fps:{: >3}, total: {: >7.3}s, dt: {: >.3}s", game.get_fps(), (total as f64) / 1_000.0, dt);
+		print!(" --- ");
 		game.get_current_world().print();
+		print!(" --- ");
+		ren.print();
+		println!("");
 		
 		if !game.is_paused() {
 			game.tick(dt, &KeyboardState::new(&pump));
