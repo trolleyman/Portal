@@ -128,11 +128,18 @@ fn main() {
 }
 
 fn main_loop(sdl: &Sdl, timer: &mut sdl2::TimerSubsystem, pump: &mut sdl2::EventPump, game: &mut Game, ren: &mut Render) {
-	let mut total: DT = 0.0;
+	let mut total: u32 = 0;
 	let mut prev = timer.ticks();
+	let mut marker = prev;
+	let mut frames_since_marker = 0;
 	loop {
 		let now = timer.ticks();
 		let dur = now - prev;
+		if now as i64 - marker as i64 >= 1000 {
+			game.set_fps(frames_since_marker);
+			marker = now;
+			frames_since_marker = 0;
+		}
 		prev = now;
 		
 		let dt: DT = dur as DT / 1_000.0;
@@ -140,10 +147,10 @@ fn main_loop(sdl: &Sdl, timer: &mut sdl2::TimerSubsystem, pump: &mut sdl2::Event
 		let nsecs: u32 = dur.subsec_nanos();
 		let dt: DT = (secs as DT) + ((nsecs as DT) / 1_000_000_000.0);*/
 		if !game.is_paused() {
-			total += dt;
+			total += dur;
 		}
 		
-		print!("total: {: <.5}s, dt: {: <.5}s ", total, dt);
+		print!("fps:{: >3}, total: {: >7.3}s, dt: {: >.3}s --- ", game.get_fps(), (total as f64) / 1_000.0, dt);
 		game.get_current_world().print();
 		
 		if !game.is_paused() {
@@ -151,8 +158,9 @@ fn main_loop(sdl: &Sdl, timer: &mut sdl2::TimerSubsystem, pump: &mut sdl2::Event
 		}
 		game.handle_events(sdl, pump, ren);
 		game.swap();
-		// This render can be done by a seperate thread.
+		// This render can be done by a seperate thread. Probably.
 		game.render(ren);
+		frames_since_marker += 1;
 		
 		if game.should_quit() {
 			println!("quitting...");

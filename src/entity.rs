@@ -36,6 +36,43 @@ impl Portal {
 		} else {
 			Vec3::new(0.0, 1.0, 0.0)
 		};
+		
+		/*let d = 0.04;
+		let w2 = w/2.0;
+		let h2 = h/2.0;
+		let d2 = d/2.0;
+		
+		let mesh = Mesh::indexed(
+			// 01  45
+			// 23  67
+			&[
+				Pnt3::new(-w2,  h2,  d2), // 0 - Back
+				Pnt3::new( w2,  h2,  d2), // 1
+				Pnt3::new(-w2, -h2,  d2), // 2
+				Pnt3::new( w2, -h2,  d2), // 3
+				
+				Pnt3::new(-w2,  h2, -d2), // 4 - Front
+				Pnt3::new( w2,  h2, -d2), // 5
+				Pnt3::new(-w2, -h2, -d2), // 6
+				Pnt3::new( w2, -h2, -d2), // 7
+			], &[
+				na::Vec3::new(0, 2, 3),
+				na::Vec3::new(0, 3, 1),
+				
+				na::Vec3::new(4, 7, 6),
+				na::Vec3::new(4, 5, 7),
+			], &[
+				Vec3::new(1.0, 1.0, 1.0),
+				Vec3::new(1.0, 1.0, 1.0),
+				Vec3::new(1.0, 1.0, 1.0),
+				Vec3::new(1.0, 1.0, 1.0),
+				
+				Vec3::new(1.0, 1.0, 1.0),
+				Vec3::new(1.0, 1.0, 1.0),
+				Vec3::new(1.0, 1.0, 1.0),
+				Vec3::new(1.0, 1.0, 1.0),
+			]);*/
+		
 		let mesh = Mesh::new_rectangle_double(w, h, Vec3::new(1.0, 1.0, 1.0));
 		let outline_mesh = Mesh::new_rect_torus(w, h, 0.07);
 		
@@ -211,12 +248,17 @@ impl Camera {
 				let angle_between = out_norm2d.y.atan2(out_norm2d.x) - in_norm2d.y.atan2(in_norm2d.x);
 				println!("angle_between: {}", angle_between);
 				self.xrot -= angle_between;
+				
+				return true;
 			}
 		}
 		false
 	}
 	
 	pub fn translate(&mut self, mov: Vec3, ps: &Option<(Portal, Portal)>) {
+		println!("translate POS x:{: >7.4}, y:{: >7.4}, z:{: >7.4} --- MOV x:{: >7.4}, y:{: >7.4}, z:{: >7.4}"
+					, self.pos.x, self.pos.y, self.pos.z, mov.x, mov.y, mov.z);
+		
 		if let &Some((ref p1, ref p2)) = ps {
 			if !(self.translate_through_portal(mov, p1, p2) || self.translate_through_portal(mov, p2, p1)) {
 				self.pos = self.pos + mov;
