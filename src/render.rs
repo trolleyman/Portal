@@ -52,7 +52,7 @@ impl<'a> Render<'a> {
 			render_portals: true,
 		};
 		unsafe {
-			// gl::Enable(gl::CULL_FACE);
+			gl::Enable(gl::CULL_FACE);
 			gl::Enable(gl::DEPTH_TEST);
 			// gl::Enable(gl::LINE_SMOOTH);
 			// gl::LineWidth(1.0);
@@ -68,7 +68,7 @@ impl<'a> Render<'a> {
 		self.win.gl_swap_window();
 		unsafe {
 			let x = Render::get_background_color();
-			let r = x[0]; let g = x[1]; let b = x[2]; let a = x[3];
+			let &[r, g, b, a] = x.as_array();
 			gl::ClearColor(r, g, b, a);
 			gl::ClearStencil(0);
 			gl::Enable(gl::STENCIL_TEST);
@@ -104,6 +104,12 @@ impl<'a> Render<'a> {
 		s.set_mvp(self.vp_mat * self.m_mat);
 	}
 	
+	// // Renders p_in in the stencil buffer from the camera c transformed through the portal n number of times.
+	// // Returns the integer that is used to mark the area where p_in is seen through.
+	// fn stencil_portal(c: Camera, p_in: Portal, p_out: Portal, n: u32) -> u32 {
+		
+	// }
+	
 	pub fn get_drawable_size(&self) -> (u32, u32) {
 		self.win.drawable_size()
 	}
@@ -129,6 +135,10 @@ impl<'a> Render<'a> {
 	
 	pub fn get_background_color() -> Vec4 {
 		Vec4::new(0.0, 0.0, 0.3, 1.0)
+	}
+	
+	pub fn draw_debug_arrow(pos: Vec3, dir: Vec3) {
+		
 	}
 	
 	pub fn print(&self) {
@@ -291,7 +301,7 @@ impl Clone for Shader {
 }
 
 pub struct MeshBuilder {
-	verts: Vec<Pnt3>,
+	verts: Vec<Vec3>,
 	colors: Vec<Vec3>,
 	indices: Vec<na::Vec3<Index>>,
 }
@@ -304,7 +314,7 @@ impl MeshBuilder {
 		}
 	}
 	
-	pub fn push(&mut self, vert: Pnt3, color: Vec3) -> Index {
+	pub fn push(&mut self, vert: Vec3, color: Vec3) -> Index {
 		self.verts.push(vert);
 		self.colors.push(color);
 		self.verts.len() as Index - 1
@@ -336,7 +346,7 @@ pub struct Mesh {
 	colors: GLuint,
 }
 impl Mesh {
-	pub fn indexed(verts: &[Pnt3], indices: &[na::Vec3<Index>], colors: &[Vec3]) -> Mesh {
+	pub fn indexed(verts: &[Vec3], indices: &[na::Vec3<Index>], colors: &[Vec3]) -> Mesh {
 		unsafe {
 			// println!("===============================");
 			// println!("verts:   {:?}", verts);
@@ -357,7 +367,7 @@ impl Mesh {
 		}
 	}
 	
-	pub fn new(verts: &[Pnt3], colors: &[Vec3]) -> Mesh {
+	pub fn new(verts: &[Vec3], colors: &[Vec3]) -> Mesh {
 		unsafe {
 			let mut vao: GLuint = 0;
 			gl::GenVertexArrays(1, &mut vao);
@@ -442,45 +452,45 @@ impl Mesh {
 		}*/
 		
 		Mesh::indexed(&[
-				*(- out_x + out_y - z).as_pnt(), // 0
-				*(-     x + out_y - z).as_pnt(),
-				*(- out_x +     y - z).as_pnt(),
-				*(-     x +     y - z).as_pnt(),
+				- out_x + out_y - z, // 0
+				-     x + out_y - z,
+				- out_x +     y - z,
+				-     x +     y - z,
 				
-				*(      x + out_y - z).as_pnt(), // 4
-				*(  out_x + out_y - z).as_pnt(),
-				*(      x +     y - z).as_pnt(),
-				*(  out_x +     y - z).as_pnt(),
+				      x + out_y - z, // 4
+				  out_x + out_y - z,
+				      x +     y - z,
+				  out_x +     y - z,
 				
-				*(- out_x -     y - z).as_pnt(), // 8
-				*(-     x -     y - z).as_pnt(),
-				*(- out_x - out_y - z).as_pnt(),
-				*(-     x - out_y - z).as_pnt(),
+				- out_x -     y - z, // 8
+				-     x -     y - z,
+				- out_x - out_y - z,
+				-     x - out_y - z,
 				
-				*(      x -     y - z).as_pnt(), // 12
-				*(  out_x -     y - z).as_pnt(),
-				*(      x - out_y - z).as_pnt(),
-				*(  out_x - out_y - z).as_pnt(),
+				      x -     y - z, // 12
+				  out_x -     y - z,
+				      x - out_y - z,
+				  out_x - out_y - z,
 				
-				*(- out_x + out_y + z).as_pnt(), // 16
-				*(-     x + out_y + z).as_pnt(),
-				*(- out_x +     y + z).as_pnt(),
-				*(-     x +     y + z).as_pnt(),
+				- out_x + out_y + z, // 16
+				-     x + out_y + z,
+				- out_x +     y + z,
+				-     x +     y + z,
 				
-				*(      x + out_y + z).as_pnt(), // 20
-				*(  out_x + out_y + z).as_pnt(),
-				*(      x +     y + z).as_pnt(),
-				*(  out_x +     y + z).as_pnt(),
+				      x + out_y + z, // 20
+				  out_x + out_y + z,
+				      x +     y + z,
+				  out_x +     y + z,
 				
-				*(- out_x -     y + z).as_pnt(), // 24
-				*(-     x -     y + z).as_pnt(),
-				*(- out_x - out_y + z).as_pnt(),
-				*(-     x - out_y + z).as_pnt(),
+				- out_x -     y + z, // 24
+				-     x -     y + z,
+				- out_x - out_y + z,
+				-     x - out_y + z,
 				
-				*(      x -     y + z).as_pnt(), // 28
-				*(  out_x -     y + z).as_pnt(),
-				*(      x - out_y + z).as_pnt(),
-				*(  out_x - out_y + z).as_pnt(),
+				      x -     y + z, // 28
+				  out_x -     y + z,
+				      x - out_y + z,
+				  out_x - out_y + z,
 			], &[
 				// Bottom
 					na::Vec3::new(0, 7, 5),
@@ -543,10 +553,10 @@ impl Mesh {
 		let plane_y = Vec3::new(0.0, h / 2.0, 0.0);
 		
 		Mesh::indexed(&[
-				*(- plane_x + plane_y).as_pnt(),
-				*(- plane_x - plane_y).as_pnt(),
-				*(  plane_x - plane_y).as_pnt(),
-				*(  plane_x + plane_y).as_pnt(),
+				- plane_x + plane_y,
+				- plane_x - plane_y,
+				  plane_x - plane_y,
+				  plane_x + plane_y,
 			], &[
 				na::Vec3::new(0, 2, 1),
 				na::Vec3::new(0, 3, 2),
@@ -564,10 +574,10 @@ impl Mesh {
 		let plane_y = Vec3::new(0.0, h / 2.0, 0.0);
 		
 		Mesh::indexed(&[
-				*(- plane_x + plane_y).as_pnt(),
-				*(- plane_x - plane_y).as_pnt(),
-				*(  plane_x - plane_y).as_pnt(),
-				*(  plane_x + plane_y).as_pnt(),
+				- plane_x + plane_y,
+				- plane_x - plane_y,
+				  plane_x - plane_y,
+				  plane_x + plane_y,
 			], &[
 				na::Vec3::new(0, 2, 1),
 				na::Vec3::new(0, 3, 2),
@@ -582,9 +592,9 @@ impl Mesh {
 	}
 	pub fn new_triangle(scale: f32) -> Mesh {
 		Mesh::indexed(&[
-			Pnt3::new(-0.5,  0.0, 0.0) * scale,
-			Pnt3::new( 0.5,  0.0, 0.0) * scale,
-			Pnt3::new( 0.0,  1.0, 0.0) * scale,
+			Vec3::new(-0.5,  0.0, 0.0) * scale,
+			Vec3::new( 0.5,  0.0, 0.0) * scale,
+			Vec3::new( 0.0,  1.0, 0.0) * scale,
 		], &[
 			na::Vec3::new(0, 1, 2),
 			na::Vec3::new(0, 2, 1),
@@ -596,10 +606,10 @@ impl Mesh {
 	}
 	pub fn new_square(scale: f32) -> Mesh {
 		Mesh::indexed(&[
-			Pnt3::new(-0.5,  1.0, 0.0) * scale,
-			Pnt3::new(-0.5,  0.0, 0.0) * scale,
-			Pnt3::new( 0.5,  0.0, 0.0) * scale,
-			Pnt3::new( 0.5,  1.0, 0.0) * scale,
+			Vec3::new(-0.5,  1.0, 0.0) * scale,
+			Vec3::new(-0.5,  0.0, 0.0) * scale,
+			Vec3::new( 0.5,  0.0, 0.0) * scale,
+			Vec3::new( 0.5,  1.0, 0.0) * scale,
 		], &[
 			na::Vec3::new(0, 1, 2),
 			na::Vec3::new(2, 3, 0),
@@ -625,10 +635,10 @@ impl Mesh {
 					color2
 				};
 				let mut i = [0 as Index, 0, 0, 0];
-				i[0] = mb.push(Pnt3::new((x as f32      ) * (w / num_w as f32) - offset_x, 0.0, (y as f32      ) * (h / num_h as f32) - offset_y), col);
-				i[1] = mb.push(Pnt3::new((x as f32      ) * (w / num_w as f32) - offset_x, 0.0, (y as f32 + 1.0) * (h / num_h as f32) - offset_y), col);
-				i[2] = mb.push(Pnt3::new((x as f32 + 1.0) * (w / num_w as f32) - offset_x, 0.0, (y as f32 + 1.0) * (h / num_h as f32) - offset_y), col);
-				i[3] = mb.push(Pnt3::new((x as f32 + 1.0) * (w / num_w as f32) - offset_x, 0.0, (y as f32      ) * (h / num_h as f32) - offset_y), col);
+				i[0] = mb.push(Vec3::new((x as f32      ) * (w / num_w as f32) - offset_x, 0.0, (y as f32      ) * (h / num_h as f32) - offset_y), col);
+				i[1] = mb.push(Vec3::new((x as f32      ) * (w / num_w as f32) - offset_x, 0.0, (y as f32 + 1.0) * (h / num_h as f32) - offset_y), col);
+				i[2] = mb.push(Vec3::new((x as f32 + 1.0) * (w / num_w as f32) - offset_x, 0.0, (y as f32 + 1.0) * (h / num_h as f32) - offset_y), col);
+				i[3] = mb.push(Vec3::new((x as f32 + 1.0) * (w / num_w as f32) - offset_x, 0.0, (y as f32      ) * (h / num_h as f32) - offset_y), col);
 				
 				mb.index(na::Vec3::new(i[0], i[1], i[2]));
 				mb.index(na::Vec3::new(i[2], i[3], i[0]));

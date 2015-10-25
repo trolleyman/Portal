@@ -63,6 +63,26 @@ impl World {
 		if mov != Vec3::new(0.0, 0.0, 0.0) {
 			self.camera.translate(mov, &self.portals.clone());
 		}
+		
+		let rot_speed = speed;
+		let drot = rot_speed * dt;
+		let (mut rot_x, mut rot_y) = (0.0, 0.0);
+		if state.is_scancode_pressed(Scan::I) {
+			rot_y += drot;
+		}
+		if state.is_scancode_pressed(Scan::K) {
+			rot_y -= drot;
+		}
+		if state.is_scancode_pressed(Scan::J) {
+			rot_x += drot;
+		}
+		if state.is_scancode_pressed(Scan::L) {
+			rot_x -= drot;
+		}
+		let rot = Rot3::new_with_euler_angles(rot_y, 0.0, 0.0) * Rot3::new_with_euler_angles(0.0, rot_x, 0.0);
+		if let Some((ref mut p1, ref mut p2)) = self.portals {
+			p2.rot = p2.rot * rot;
+		}
 	}
 	
 	pub fn render(&self, ren: &mut Render) {
@@ -72,9 +92,9 @@ impl World {
 			Some((p1, p2)) => {
 				if ren.should_render_portals() {
 					let mut p1_transformed_cam = self.camera.clone();
-					p1_transformed_cam.transform_through_portal(p1, p2);
+					p1_transformed_cam.transform_through_portal(&p1, &p2);
 					let mut p2_transformed_cam = self.camera.clone();
-					p2_transformed_cam.transform_through_portal(p2, p1);
+					p2_transformed_cam.transform_through_portal(&p2, &p1);
 					
 					unsafe {
 						gl::Enable(gl::STENCIL_TEST);
