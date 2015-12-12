@@ -4,18 +4,7 @@ version = "0.1.0"
 authors = ["trolleyman <cgtrolley@gmail.com>"]
 
 [dependencies]
-nalgebra = "*"
-ncollide = "*"
-#rand = "*"
-
-#[dependencies.nalgebra]
-#git = "https://github.com/sebcrozet/nalgebra"
-#
-#[dependencies.ncollide]
-#git = "https://github.com/sebcrozet/ncollide"
-
-[dependencies.sdl2]
-git = "https://github.com/AngryLawyer/rust-sdl2"
-
-[dependencies.gl]
-git = "https://github.com/bjz/gl-rs"
+nalgebra = "0.4.0"
+ncollide = "0.6.0"
+sdl2 = "0.12.0"
+gl = "0.5.2"

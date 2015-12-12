@@ -108,7 +108,7 @@ fn main() {
 	};
 	sdl.mouse().set_relative_mouse_mode(true);
 	
-	gl::load_with(|name| video.gl_get_proc_address(name));
+	gl::load_with(|name| video.gl_get_proc_address(name) as *const _);
 	
 	let mut ren = Render::new(&mut win, &mut context);
 	

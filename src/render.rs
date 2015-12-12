@@ -210,7 +210,7 @@ impl Shader {
 	
 	pub fn set_mvp(&self, mvp: Mat4) {
 		unsafe {
-			gl::UniformMatrix4fv(self.mvp_pos, 1, gl::FALSE, &mvp.as_array()[0][0] as *const GLfloat);
+			gl::UniformMatrix4fv(self.mvp_pos, 1, gl::FALSE, mem::transmute(mvp.as_ref()));
 		}
 	}
 }
@@ -284,7 +284,7 @@ impl Mesh {
 			let mut inds = 0;
 			gl::GenBuffers(1, &mut inds);
 			gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, inds);
-			gl::BufferData(gl::ELEMENT_ARRAY_BUFFER, (indices.len() * mem::size_of::<na::Vec3<Index>>()) as i64, mem::transmute(indices.as_ptr()), gl::STATIC_DRAW);
+			gl::BufferData(gl::ELEMENT_ARRAY_BUFFER, (indices.len() * mem::size_of::<na::Vec3<Index>>()) as isize, mem::transmute(indices.as_ptr()), gl::STATIC_DRAW);
 			gl::Flush();
 			
 			m.indices = Some(inds);
@@ -305,14 +305,14 @@ impl Mesh {
 			// Specify that the data to be pushed is the verts
 			gl::BindBuffer(gl::ARRAY_BUFFER, vbo[0]);
 			// Push the verts to the GPU
-			gl::BufferData(gl::ARRAY_BUFFER, (verts.len() * mem::size_of::<Vec3>()) as i64, mem::transmute(verts.as_ptr()), gl::STATIC_DRAW);
+			gl::BufferData(gl::ARRAY_BUFFER, (verts.len() * mem::size_of::<Vec3>()) as isize, mem::transmute(verts.as_ptr()), gl::STATIC_DRAW);
 			// Specify that it is attribute 0
 			gl::VertexAttribPointer(0, 3, gl::FLOAT, gl::FALSE, 0, null());
 			gl::EnableVertexAttribArray(0);
 			
 			// Do the same, but with the colors
 			gl::BindBuffer(gl::ARRAY_BUFFER, vbo[1]);
-			gl::BufferData(gl::ARRAY_BUFFER, (colors.len() * mem::size_of::<Vec3>()) as i64, mem::transmute(colors.as_ptr()), gl::STATIC_DRAW);
+			gl::BufferData(gl::ARRAY_BUFFER, (colors.len() * mem::size_of::<Vec3>()) as isize, mem::transmute(colors.as_ptr()), gl::STATIC_DRAW);
 			gl::VertexAttribPointer(1, 3, gl::FLOAT, gl::FALSE, 0, null());
 			gl::EnableVertexAttribArray(1);
 			
