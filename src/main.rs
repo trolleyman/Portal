@@ -1,3 +1,4 @@
+#![feature(slice_patterns)]
 extern crate ncollide as nc;
 extern crate nalgebra as na;
 //extern crate rand;
@@ -24,7 +25,7 @@ pub mod prelude {
 		Absolute, Cast, Col, Cross, Det, Dot, Eye, FromHomogeneous, Inv, Norm, PntAsVec, Rotate, Rotation, Row,
 		ToHomogeneous, RotationTo, Transform, Transformation, Translate, Translation,
 	};
-	pub use {translation_mat, get_rotation_between};
+	pub use {translation_mat};
 	#[allow(non_snake_case)]
 	pub mod Key {
 		pub use sdl2::keyboard::Keycode::*;
@@ -35,7 +36,7 @@ pub mod prelude {
 	}
 	
 	pub use DT;
-	pub use {Mat3, Mat4, Ortho3, Persp3, Pnt2, Pnt3, Quat, Rot2, Rot3, UnitQuat, Vec3, Vec4};
+	pub use {Mat3, Mat4, Ortho3, Persp3, Pnt2, Pnt3, Quat, Rot2, Rot3, UnitQuat, Vec2, Vec3, Vec4, Iso3};
 	pub use {TriMesh};
 }
 pub type TriMesh = nc::shape::TriMesh<na::Pnt3<f32>>;
@@ -50,8 +51,10 @@ pub type Quat = na::Quat<f32>;
 pub type Rot2 = na::Rot2<f32>;
 pub type Rot3 = na::Rot3<f32>;
 pub type UnitQuat = na::UnitQuat<f32>;
+pub type Vec2 = na::Vec2<f32>;
 pub type Vec3 = na::Vec3<f32>;
 pub type Vec4 = na::Vec4<f32>;
+pub type Iso3 = na::Iso3<f32>;
 
 pub fn translation_mat(t: &Vec3) -> Mat4 {
 	Mat4::new(1.0, 0.0, 0.0, t.x,
@@ -60,6 +63,7 @@ pub fn translation_mat(t: &Vec3) -> Mat4 {
 	          0.0, 0.0, 0.0, 1.0)
 }
 
+/* Only still here for recognition of prior work.
 pub fn get_rotation_between(mut a: Vec3, mut b: Vec3) -> Mat4 {
 	use na::{Norm, Cross, Dot, ToHomogeneous};
 	
@@ -75,6 +79,13 @@ pub fn get_rotation_between(mut a: Vec3, mut b: Vec3) -> Mat4 {
 	Mat3::new(cos + u.x*u.x*ncos, u.x*u.y*ncos - u.z*sin, u.x*u.z*ncos + u.y*sin,
 	          u.y*u.z*ncos + u.z*sin, cos + u.y*u.y*ncos, u.y*u.z*ncos - u.z*sin,
 	          u.z*u.x*ncos - u.y*sin, u.z*u.y*ncos + u.x*sin, cos + u.z*u.z*ncos).to_homogeneous()
+}*/
+
+// Get rotation needed to map a onto b.
+// Must be unit vectors.
+pub fn get_rotation_between(a: Vec3, b: Vec3) -> Rot3 {
+	use na::{Cross, Dot};
+	Rot3::new(a.cross(&b) * a.dot(&b).acos())
 }
 
 fn main() {
@@ -118,8 +129,8 @@ fn main() {
 	let planes = Mesh::new_planes(10, 10, 10.0, 10.0, Vec3::new(1.0, 1.0, 1.0), Vec3::new(0.0, 0.0, 0.0));
 	init_world.entities.push(Entity::new_static(Vec3::new(0.0, 0.0, 0.0), planes));
 	init_world.set_portals(
-		Portal::new(Vec3::new(0.0, 1.0, 4.0), Vec3::new(0.0, 0.0, -1.0), 0.9, 1.4),
-		Portal::new(Vec3::new(-1.5, 1.0, 2.5), Vec3::new(1.0, 0.0, 0.0), 0.9, 1.4)
+		Portal::new(Vec3::new(0.0, 1.0, 4.0), na::Eye::new_identity(3), 0.9, 1.4),
+		Portal::new(Vec3::new(-1.5, 1.0, 2.5), na::Eye::new_identity(3), 0.9, 1.4)
 	);
 	
 	let mut game = Game::new(init_world, sdl.mouse());
@@ -127,11 +138,18 @@ fn main() {
 }
 
 fn main_loop(sdl: &Sdl, timer: &mut sdl2::TimerSubsystem, pump: &mut sdl2::EventPump, game: &mut Game, ren: &mut Render) {
-	let mut total: DT = 0.0;
+	let mut total: u32 = 0;
 	let mut prev = timer.ticks();
+	let mut marker = prev;
+	let mut frames_since_marker = 0;
 	loop {
 		let now = timer.ticks();
 		let dur = now - prev;
+		if now as i64 - marker as i64 >= 1000 {
+			game.set_fps(frames_since_marker);
+			marker = now;
+			frames_since_marker = 0;
+		}
 		prev = now;
 		
 		let dt: DT = dur as DT / 1_000.0;
@@ -139,19 +157,24 @@ fn main_loop(sdl: &Sdl, timer: &mut sdl2::TimerSubsystem, pump: &mut sdl2::Event
 		let nsecs: u32 = dur.subsec_nanos();
 		let dt: DT = (secs as DT) + ((nsecs as DT) / 1_000_000_000.0);*/
 		if !game.is_paused() {
-			total += dt;
+			total += dur;
 		}
 		
-		print!("total: {: <.5}s, dt: {: <.5}s ", total, dt);
+		print!("fps:{: >3}, total: {: >7.3}s, dt: {: >.3}s", game.get_fps(), (total as f64) / 1_000.0, dt);
+		print!(" --- ");
 		game.get_current_world().print();
+		print!(" --- ");
+		ren.print();
+		println!("");
 		
 		if !game.is_paused() {
 			game.tick(dt, &KeyboardState::new(&pump));
 		}
 		game.handle_events(sdl, pump, ren);
 		game.swap();
-		// This render can be done by a seperate thread.
+		// This render can be done by a seperate thread. Probably.
 		game.render(ren);
+		frames_since_marker += 1;
 		
 		if game.should_quit() {
 			println!("quitting...");

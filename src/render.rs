@@ -8,6 +8,7 @@ use std::ops::Drop;
 use std::mem;
 use std::ptr::null;
 use std::ffi::CString;
+use std::ffi::CStr;
 
 use na;
 //use rand::{Rand, XorShiftRng, SeedableRng, Rng};
@@ -23,10 +24,12 @@ pub struct Render<'a> {
 	pub win: &'a mut Window,
 	pub gl_context: &'a mut GLContext,
 	pub main_shader: Shader,
+	pub solid_color_shader: Shader,
 	pub vp_mat: Mat4,
 	pub m_mat: Mat4,
 	// arrow_mesh: Mesh,
 	view_wireframes: bool,
+	render_portals: bool
 }
 
 impl<'a> Render<'a> {
@@ -36,15 +39,20 @@ impl<'a> Render<'a> {
 			win: win,
 			gl_context: context,
 			main_shader: match Shader::from_files("shaders/main.vs", "shaders/main.fs") {
-					Ok(s) => s,
-					Err(e) => panic!("{}", e),
+				Ok(s) => s,
+				Err(e) => panic!("{}", e),
 				},
+			solid_color_shader: match Shader::from_files("shaders/solid_color.vs", "shaders/solid_color.fs") {
+				Ok(s) => s,
+				Err(e) => panic!("{}", e),
+			},
 			vp_mat: Mat4::new_identity(4),
 			m_mat: Mat4::new_identity(4),
 			view_wireframes: false,
+			render_portals: true,
 		};
 		unsafe {
-			// gl::Enable(gl::CULL_FACE);
+			gl::Enable(gl::CULL_FACE);
 			gl::Enable(gl::DEPTH_TEST);
 			// gl::Enable(gl::LINE_SMOOTH);
 			// gl::LineWidth(1.0);
@@ -59,9 +67,17 @@ impl<'a> Render<'a> {
 		self.win.show();
 		self.win.gl_swap_window();
 		unsafe {
-			gl::ClearColor(0.0, 0.0, 0.3, 1.0);
-			gl::Clear(gl::COLOR_BUFFER_BIT);
-			gl::Clear(gl::DEPTH_BUFFER_BIT);
+			let x = Render::get_background_color();
+			let &[r, g, b, a] = x.as_array();
+			gl::ClearColor(r, g, b, a);
+			gl::ClearStencil(0);
+			gl::Enable(gl::STENCIL_TEST);
+			gl::StencilMask(0xFF);
+			gl::ColorMask(gl::TRUE, gl::TRUE, gl::TRUE, gl::TRUE);
+			gl::DepthMask(gl::TRUE);
+			gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT | gl::STENCIL_BUFFER_BIT);
+			gl::StencilMask(0x00);
+			gl::Disable(gl::STENCIL_TEST);
 			
 			if self.view_wireframes {
 				gl::PolygonMode(gl::FRONT_AND_BACK, gl::LINE);
@@ -83,10 +99,16 @@ impl<'a> Render<'a> {
 		self.vp_mat = projection * view;
 	}
 	
-	pub fn set_model_mat(&mut self, mat: Mat4) {
+	pub fn set_model_mat(&mut self, s: &Shader, mat: Mat4) {
 		self.m_mat = mat;
-		self.main_shader.set_mvp(self.vp_mat * self.m_mat);
+		s.set_mvp(self.vp_mat * self.m_mat);
 	}
+	
+	// // Renders p_in in the stencil buffer from the camera c transformed through the portal n number of times.
+	// // Returns the integer that is used to mark the area where p_in is seen through.
+	// fn stencil_portal(c: Camera, p_in: Portal, p_out: Portal, n: u32) -> u32 {
+		
+	// }
 	
 	pub fn get_drawable_size(&self) -> (u32, u32) {
 		self.win.drawable_size()
@@ -100,6 +122,35 @@ impl<'a> Render<'a> {
 	pub fn toggle_wireframes(&mut self) {
 		self.view_wireframes = !self.view_wireframes;
 	}
+	pub fn is_wireframe(&self) -> bool {
+		self.view_wireframes
+	}
+	
+	pub fn toggle_portal_rendering(&mut self) {
+		self.render_portals = !self.render_portals;
+	}
+	pub fn should_render_portals(&self) -> bool {
+		self.render_portals
+	}
+	
+	pub fn get_background_color() -> Vec4 {
+		Vec4::new(0.0, 0.0, 0.3, 1.0)
+	}
+	
+	pub fn draw_debug_arrow(pos: Vec3, dir: Vec3) {
+		
+	}
+	
+	pub fn print(&self) {
+		if !self.view_wireframes {
+			print!("NO_");
+		}
+		print!("WIREFRAME - ");
+		if !self.render_portals {
+			print!("NO_");
+		}
+		print!("RENDER_PORTALS");
+	}
 	
 	// pub fn render_arrow(pos: Vec3, vec: Vec3) {
 	// 	arrow_mesh.render()
@@ -111,6 +162,7 @@ pub struct Shader {
 	vs: GLuint,
 	fs: GLuint,
 	mvp_pos: GLint,
+	owned: bool,
 }
 
 impl Shader {
@@ -176,6 +228,7 @@ impl Shader {
 				vs: vs,
 				fs: fs,
 				mvp_pos: gl::GetUniformLocation(prog, CString::new("in_mvp").unwrap().as_ptr()),
+				owned: true,
 			})
 		}
 	}
@@ -210,24 +263,45 @@ impl Shader {
 	
 	pub fn set_mvp(&self, mvp: Mat4) {
 		unsafe {
-			gl::UniformMatrix4fv(self.mvp_pos, 1, gl::FALSE, mem::transmute(mvp.as_ref()));
+			gl::UseProgram(self.prog);
+			gl::UniformMatrix4fv(self.mvp_pos, 1, gl::FALSE, mvp.as_ref() as *const GLfloat);
+		}
+	}
+	
+	pub fn set_uniform_4f(&self, name: &CStr, data: &[f32; 4]) {
+		unsafe {
+			let loc = gl::GetUniformLocation(self.prog, name.as_ptr());
+			if loc != 0 {
+				gl::UseProgram(self.prog);
+				gl::Uniform4f(loc, data[0] as GLfloat, data[1] as GLfloat, data[2] as GLfloat, data[3] as GLfloat);
+			}
 		}
 	}
 }
 impl Drop for Shader {
 	fn drop(&mut self) {
 		unsafe {
-			gl::DetachShader(self.prog, self.vs);
-			gl::DetachShader(self.prog, self.fs);
-			gl::DeleteProgram(self.prog);
-			gl::DeleteShader(self.vs);
-			gl::DeleteShader(self.fs);
+			if self.owned {
+				gl::DetachShader(self.prog, self.vs);
+				gl::DetachShader(self.prog, self.fs);
+				gl::DeleteProgram(self.prog);
+				gl::DeleteShader(self.vs);
+				gl::DeleteShader(self.fs);
+			}
+		}
+	}
+}
+impl Clone for Shader {
+	fn clone(&self) -> Shader {
+		Shader {
+			owned: false,
+			..*self
 		}
 	}
 }
 
 pub struct MeshBuilder {
-	verts: Vec<Pnt3>,
+	verts: Vec<Vec3>,
 	colors: Vec<Vec3>,
 	indices: Vec<na::Vec3<Index>>,
 }
@@ -240,7 +314,7 @@ impl MeshBuilder {
 		}
 	}
 	
-	pub fn push(&mut self, vert: Pnt3, color: Vec3) -> Index {
+	pub fn push(&mut self, vert: Vec3, color: Vec3) -> Index {
 		self.verts.push(vert);
 		self.colors.push(color);
 		self.verts.len() as Index - 1
@@ -272,7 +346,7 @@ pub struct Mesh {
 	colors: GLuint,
 }
 impl Mesh {
-	pub fn indexed(verts: &[Pnt3], indices: &[na::Vec3<Index>], colors: &[Vec3]) -> Mesh {
+	pub fn indexed(verts: &[Vec3], indices: &[na::Vec3<Index>], colors: &[Vec3]) -> Mesh {
 		unsafe {
 			// println!("===============================");
 			// println!("verts:   {:?}", verts);
@@ -293,7 +367,7 @@ impl Mesh {
 		}
 	}
 	
-	pub fn new(verts: &[Pnt3], colors: &[Vec3]) -> Mesh {
+	pub fn new(verts: &[Vec3], colors: &[Vec3]) -> Mesh {
 		unsafe {
 			let mut vao: GLuint = 0;
 			gl::GenVertexArrays(1, &mut vao);
@@ -378,45 +452,45 @@ impl Mesh {
 		}*/
 		
 		Mesh::indexed(&[
-				*(- out_x + out_y - z).as_pnt(), // 0
-				*(-     x + out_y - z).as_pnt(),
-				*(- out_x +     y - z).as_pnt(),
-				*(-     x +     y - z).as_pnt(),
+				- out_x + out_y - z, // 0
+				-     x + out_y - z,
+				- out_x +     y - z,
+				-     x +     y - z,
 				
-				*(      x + out_y - z).as_pnt(), // 4
-				*(  out_x + out_y - z).as_pnt(),
-				*(      x +     y - z).as_pnt(),
-				*(  out_x +     y - z).as_pnt(),
+				      x + out_y - z, // 4
+				  out_x + out_y - z,
+				      x +     y - z,
+				  out_x +     y - z,
 				
-				*(- out_x -     y - z).as_pnt(), // 8
-				*(-     x -     y - z).as_pnt(),
-				*(- out_x - out_y - z).as_pnt(),
-				*(-     x - out_y - z).as_pnt(),
+				- out_x -     y - z, // 8
+				-     x -     y - z,
+				- out_x - out_y - z,
+				-     x - out_y - z,
 				
-				*(      x -     y - z).as_pnt(), // 12
-				*(  out_x -     y - z).as_pnt(),
-				*(      x - out_y - z).as_pnt(),
-				*(  out_x - out_y - z).as_pnt(),
+				      x -     y - z, // 12
+				  out_x -     y - z,
+				      x - out_y - z,
+				  out_x - out_y - z,
 				
-				*(- out_x + out_y + z).as_pnt(), // 16
-				*(-     x + out_y + z).as_pnt(),
-				*(- out_x +     y + z).as_pnt(),
-				*(-     x +     y + z).as_pnt(),
+				- out_x + out_y + z, // 16
+				-     x + out_y + z,
+				- out_x +     y + z,
+				-     x +     y + z,
 				
-				*(      x + out_y + z).as_pnt(), // 20
-				*(  out_x + out_y + z).as_pnt(),
-				*(      x +     y + z).as_pnt(),
-				*(  out_x +     y + z).as_pnt(),
+				      x + out_y + z, // 20
+				  out_x + out_y + z,
+				      x +     y + z,
+				  out_x +     y + z,
 				
-				*(- out_x -     y + z).as_pnt(), // 24
-				*(-     x -     y + z).as_pnt(),
-				*(- out_x - out_y + z).as_pnt(),
-				*(-     x - out_y + z).as_pnt(),
+				- out_x -     y + z, // 24
+				-     x -     y + z,
+				- out_x - out_y + z,
+				-     x - out_y + z,
 				
-				*(      x -     y + z).as_pnt(), // 28
-				*(  out_x -     y + z).as_pnt(),
-				*(      x - out_y + z).as_pnt(),
-				*(  out_x - out_y + z).as_pnt(),
+				      x -     y + z, // 28
+				  out_x -     y + z,
+				      x - out_y + z,
+				  out_x - out_y + z,
 			], &[
 				// Bottom
 					na::Vec3::new(0, 7, 5),
@@ -479,10 +553,10 @@ impl Mesh {
 		let plane_y = Vec3::new(0.0, h / 2.0, 0.0);
 		
 		Mesh::indexed(&[
-				*(- plane_x + plane_y).as_pnt(),
-				*(- plane_x - plane_y).as_pnt(),
-				*(  plane_x - plane_y).as_pnt(),
-				*(  plane_x + plane_y).as_pnt(),
+				- plane_x + plane_y,
+				- plane_x - plane_y,
+				  plane_x - plane_y,
+				  plane_x + plane_y,
 			], &[
 				na::Vec3::new(0, 2, 1),
 				na::Vec3::new(0, 3, 2),
@@ -493,11 +567,34 @@ impl Mesh {
 				color,
 			])
 	}
+	pub fn new_rectangle_double(w: f32, h: f32, color: Vec3) -> Mesh {
+		//let plane_x = normal.cross(&tangent).normalize() * w;
+		//let plane_y = normal.cross(&plane_x).normalize() * h;
+		let plane_x = Vec3::new(w / 2.0, 0.0, 0.0);
+		let plane_y = Vec3::new(0.0, h / 2.0, 0.0);
+		
+		Mesh::indexed(&[
+				- plane_x + plane_y,
+				- plane_x - plane_y,
+				  plane_x - plane_y,
+				  plane_x + plane_y,
+			], &[
+				na::Vec3::new(0, 2, 1),
+				na::Vec3::new(0, 3, 2),
+				na::Vec3::new(0, 1, 2),
+				na::Vec3::new(0, 2, 3),
+			], &[
+				color,
+				color,
+				color,
+				color,
+			])
+	}
 	pub fn new_triangle(scale: f32) -> Mesh {
 		Mesh::indexed(&[
-			Pnt3::new(-0.5,  0.0, 0.0) * scale,
-			Pnt3::new( 0.5,  0.0, 0.0) * scale,
-			Pnt3::new( 0.0,  1.0, 0.0) * scale,
+			Vec3::new(-0.5,  0.0, 0.0) * scale,
+			Vec3::new( 0.5,  0.0, 0.0) * scale,
+			Vec3::new( 0.0,  1.0, 0.0) * scale,
 		], &[
 			na::Vec3::new(0, 1, 2),
 			na::Vec3::new(0, 2, 1),
@@ -509,10 +606,10 @@ impl Mesh {
 	}
 	pub fn new_square(scale: f32) -> Mesh {
 		Mesh::indexed(&[
-			Pnt3::new(-0.5,  1.0, 0.0) * scale,
-			Pnt3::new(-0.5,  0.0, 0.0) * scale,
-			Pnt3::new( 0.5,  0.0, 0.0) * scale,
-			Pnt3::new( 0.5,  1.0, 0.0) * scale,
+			Vec3::new(-0.5,  1.0, 0.0) * scale,
+			Vec3::new(-0.5,  0.0, 0.0) * scale,
+			Vec3::new( 0.5,  0.0, 0.0) * scale,
+			Vec3::new( 0.5,  1.0, 0.0) * scale,
 		], &[
 			na::Vec3::new(0, 1, 2),
 			na::Vec3::new(2, 3, 0),
@@ -538,10 +635,10 @@ impl Mesh {
 					color2
 				};
 				let mut i = [0 as Index, 0, 0, 0];
-				i[0] = mb.push(Pnt3::new((x as f32      ) * (w / num_w as f32) - offset_x, 0.0, (y as f32      ) * (h / num_h as f32) - offset_y), col);
-				i[1] = mb.push(Pnt3::new((x as f32      ) * (w / num_w as f32) - offset_x, 0.0, (y as f32 + 1.0) * (h / num_h as f32) - offset_y), col);
-				i[2] = mb.push(Pnt3::new((x as f32 + 1.0) * (w / num_w as f32) - offset_x, 0.0, (y as f32 + 1.0) * (h / num_h as f32) - offset_y), col);
-				i[3] = mb.push(Pnt3::new((x as f32 + 1.0) * (w / num_w as f32) - offset_x, 0.0, (y as f32      ) * (h / num_h as f32) - offset_y), col);
+				i[0] = mb.push(Vec3::new((x as f32      ) * (w / num_w as f32) - offset_x, 0.0, (y as f32      ) * (h / num_h as f32) - offset_y), col);
+				i[1] = mb.push(Vec3::new((x as f32      ) * (w / num_w as f32) - offset_x, 0.0, (y as f32 + 1.0) * (h / num_h as f32) - offset_y), col);
+				i[2] = mb.push(Vec3::new((x as f32 + 1.0) * (w / num_w as f32) - offset_x, 0.0, (y as f32 + 1.0) * (h / num_h as f32) - offset_y), col);
+				i[3] = mb.push(Vec3::new((x as f32 + 1.0) * (w / num_w as f32) - offset_x, 0.0, (y as f32      ) * (h / num_h as f32) - offset_y), col);
 				
 				mb.index(na::Vec3::new(i[0], i[1], i[2]));
 				mb.index(na::Vec3::new(i[2], i[3], i[0]));
@@ -552,8 +649,45 @@ impl Mesh {
 	
 	pub fn render(&self, ren: &mut Render, model_mat: Mat4) {
 		unsafe {
-			ren.set_model_mat(model_mat);
 			ren.main_shader.use_prog();
+			{
+				let s = ren.main_shader.clone();
+				ren.set_model_mat(&s, model_mat);
+			}
+			
+			gl::BindVertexArray(self.vao);
+			
+			match self.indices {
+				Some(_) => {
+					//gl::DrawArrays(gl::POINTS, 0, self.vert_len);
+					gl::DrawElements(gl::TRIANGLES, self.len, gl::UNSIGNED_SHORT, null());
+				},
+				None => gl::DrawArrays(gl::TRIANGLES, 0, self.len),
+			}
+		}
+	}
+	
+	pub fn draw(&self) {
+		unsafe {
+			gl::BindVertexArray(self.vao);
+			
+			match self.indices {
+				Some(_) => {
+					//gl::DrawArrays(gl::POINTS, 0, self.vert_len);
+					gl::DrawElements(gl::TRIANGLES, self.len, gl::UNSIGNED_SHORT, null());
+				},
+				None => gl::DrawArrays(gl::TRIANGLES, 0, self.len),
+			}
+		}
+	}
+	pub fn render_color(&self, ren: &mut Render, model_mat: Mat4, color: &[f32; 4]) {
+		unsafe {
+			{
+				let shdr = ren.solid_color_shader.clone();
+				ren.set_model_mat(&shdr, model_mat);
+			}
+			ren.solid_color_shader.use_prog();
+			ren.solid_color_shader.set_uniform_4f(CStr::from_ptr(mem::transmute("in_color\0".as_ptr())), &color);
 			
 			gl::BindVertexArray(self.vao);
 			

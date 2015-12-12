@@ -15,7 +15,8 @@ pub struct Game {
 	current_index: usize,
 	to_quit: bool,
 	paused: bool,
-	mouse_util: MouseUtil
+	mouse_util: MouseUtil,
+	fps: u32,
 }
 impl Game {
 	pub fn new(world: World, mouse_util: MouseUtil) -> Game {
@@ -26,6 +27,7 @@ impl Game {
 			to_quit: false,
 			paused: false,
 			mouse_util: mouse_util,
+			fps: 0,
 		}
 	}
 	
@@ -54,6 +56,9 @@ impl Game {
 						},
 						Some(Key::F7) => {
 							ren.toggle_wireframes();
+						},
+						Some(Key::F8) => {
+							ren.toggle_portal_rendering();
 						},
 						_ => {}
 					}
@@ -107,6 +112,14 @@ impl Game {
 		};
 		let current_world = self.worlds[self.current_index].clone();
 		self.worlds[self.next_index] = current_world;
+	}
+	
+	pub fn set_fps(&mut self, fps: u32) {
+		self.fps = fps;
+	}
+	
+	pub fn get_fps(&self) -> u32 {
+		self.fps
 	}
 	
 	pub fn render(&self, ren: &mut Render) {
